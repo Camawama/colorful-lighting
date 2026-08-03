@@ -5,13 +5,15 @@ import dev.engine_room.flywheel.backend.gl.GlCompat;
 import dev.engine_room.flywheel.backend.glsl.GlslVersion;
 import me.erykczy.colorfullighting.ColorfulLighting;
 import me.erykczy.colorfullighting.common.ColoredLightEngine;
+import me.erykczy.colorfullighting.common.accessors.mixin.LevelAttachments;
 import net.minecraft.world.level.LevelAccessor;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public class FlywheelCompat {
-    private static FlywheelCompat instance;
+	private static boolean isAvailable = false;
+	
     /**
      * True when flywheel shaders compile below GLSL 430 and the colored light section data must
      * therefore travel as a buffer texture instead of an SSBO. Decided once on the render thread
@@ -26,9 +28,7 @@ public class FlywheelCompat {
      * engine-wide refresh paths (toggle, dirty sections) and '/cl flywheel report'. Render thread
      * only, like everything else in this compat.
      */
-	// error prone global states...
-	@Deprecated(forRemoval = true)
-    private static final List<ColoredLightFlywheelStorage> activeStorages = new ArrayList<>();
+    private final ColoredLightFlywheelStorage storage;
 
     public static void init() {
         // Probe the Flywheel 1.0 API before ColoredLightFlywheelStorage (which references it in
@@ -55,7 +55,8 @@ public class FlywheelCompat {
             // logged unconditionally: any log file must answer "which transport actually ran"
             ColorfulLighting.LOGGER.info("Flywheel colored light mode: {} (flywheel GLSL {})",
                     textureFallback ? "buffer texture" : "SSBO", GlCompat.MAX_GLSL_VERSION);
-            instance = new FlywheelCompat();
+			
+			isAvailable = net.minecraftforge.fml.ModList.get().isLoaded("flywheel");
         });
     }
 
@@ -77,67 +78,34 @@ public class FlywheelCompat {
         }
     }
 
-    public static FlywheelCompat getInstance() {
-        return instance;
-    }
-
     public static boolean isAvailable() {
-        return instance != null;
+        return isAvailable;
     }
 
     public static boolean isTextureFallback() {
         return textureFallback;
     }
 
-    static void registerStorage(ColoredLightFlywheelStorage storage) {
-        activeStorages.add(storage);
-    }
-
-    static void unregisterStorage(ColoredLightFlywheelStorage storage) {
-        activeStorages.remove(storage);
-    }
-
-    /** Engine toggle path: refresh every level's flywheel buffers. Safe to call with none live. */
-    public static void recollectAllTracked() {
-        for (ColoredLightFlywheelStorage storage : activeStorages) {
-            storage.recollectAllTracked();
-        }
-    }
-
-    /**
-     * Dirty-section path, called by a specific level's engine. Filtered by level because section
-     * coordinates overlap across dimensions: with an Immersive Portal active, the Overworld and
-     * Nether both track sections near the player, and an unfiltered refresh would recollect the
-     * other dimension's storage for a change that never happened there.
-     */
-    public static void recollectSectionIfTracked(LevelAccessor level, long section) {
-        for (ColoredLightFlywheelStorage storage : activeStorages) {
-            if (storage.isForLevel(level)) {
-                storage.recollectSectionIfTracked(section);
-            }
-        }
-    }
-
     /** '/cl flywheel report': one line per live storage so per-level state is visible. */
     public static String debugReportAll() {
-        if (activeStorages.isEmpty()) {
-            return "no flywheel colored light storages are live (no flywheel engine has been created yet)";
-        }
-        StringBuilder report = new StringBuilder();
-        for (ColoredLightFlywheelStorage storage : activeStorages) {
-            if (report.length() > 0) report.append('\n');
-            report.append(storage.debugReport());
-        }
+	    StringBuilder report = new StringBuilder();
+		ColoredLightEngine.forEach((engine)->{
+			me.erykczy.colorfullighting.common.accessors.LevelAccessor accessor = engine.getLevel();
+			FlywheelCompat compat = ((LevelAttachments) accessor).colorfullighting$getFlywheelCompat();
+			if (compat != null) {
+				ColoredLightFlywheelStorage storage = compat.storage;
+				
+				if (!report.isEmpty()) report.append('\n');
+				report.append(storage.debugReport());
+			}
+		});
         return report.toString();
     }
 
     /** Human-readable state for the '/cl flywheel' command. Safe to call with flywheel absent. */
     public static String describeMode() {
-        if (!net.minecraftforge.fml.ModList.get().isLoaded("flywheel")) {
+        if (!isAvailable()) {
             return "Flywheel is not installed";
-        }
-        if (instance == null) {
-            return "Flywheel colored light is inactive (unsupported flywheel version, or still initializing)";
         }
         // safe: instance != null implies the flywheel classes exist
         String glsl = String.valueOf(GlCompat.MAX_GLSL_VERSION);
@@ -146,17 +114,11 @@ public class FlywheelCompat {
                 : "Flywheel colored light mode: SSBO (flywheel GLSL " + glsl + ")";
     }
 
-    /**
-     * The placeholder keeps texture unit 10 holding a complete, zero-filled buffer texture from
-     * the moment the fallback mode is decided — macOS validates sampler bindings at draw time
-     * and drops draws over a missing or unattached one (see ColoredLightFlywheelStorage's
-     * constructor). Level-null, never registered, never collects; per-level storages bind over
-     * it every frame once they exist. In SSBO mode it allocates no GL objects at all.
-     */
-    @SuppressWarnings("unused")
-    private final ColoredLightFlywheelStorage placeholderStorage;
-
     public FlywheelCompat() {
-        placeholderStorage = new ColoredLightFlywheelStorage(null);
+        storage = new ColoredLightFlywheelStorage(null);
     }
+	
+	public ColoredLightFlywheelStorage getStorage() {
+		return storage;
+	}
 }

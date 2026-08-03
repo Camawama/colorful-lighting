@@ -86,9 +86,6 @@ public class ColoredLightFlywheelStorage {
         this.section2ArenaIndex = new Long2IntOpenHashMap();
         this.section2ArenaIndex.defaultReturnValue(INVALID_SECTION);
         this.collector = new SlowLightCollector(level);
-        if (level != null) {
-            FlywheelCompat.registerStorage(this);
-        }
 
         if (FlywheelCompat.isTextureFallback()) {
             maxFallbackSections = Math.max(1, TextureBuffer.MAX_TEXELS / BLOCKS_PER_SECTION);
@@ -121,7 +118,6 @@ public class ColoredLightFlywheelStorage {
 
     public void delete() {
         if (deleted) return;
-        FlywheelCompat.unregisterStorage(this);
         arena.delete();
         if (fallbackTexture != null) {
             fallbackTexture.delete();

@@ -4,6 +4,7 @@ import me.erykczy.colorfullighting.common.BlockEntityNbtCache;
 import me.erykczy.colorfullighting.common.ColoredLightEngine;
 import me.erykczy.colorfullighting.common.accessors.LevelAccessor;
 import me.erykczy.colorfullighting.common.accessors.mixin.LevelAttachments;
+import me.erykczy.colorfullighting.compat.flywheel.FlywheelCompat;
 import me.erykczy.colorfullighting.compat.valkyrienskies.VsCompat;
 import me.jellysquid.mods.sodium.client.world.WorldSlice;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -35,5 +36,10 @@ public class WorldSliceMixin implements LevelAttachments {
 	@Override
 	public BlockEntityNbtCache colorfullighting$getNbtCache() {
 		return ((LevelAttachments) world).colorfullighting$getNbtCache();
+	}
+	
+	@Override
+	public FlywheelCompat colorfullighting$getFlywheelCompat() {
+		return ((LevelAttachments) world).colorfullighting$getFlywheelCompat();
 	}
 }

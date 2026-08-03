@@ -8,6 +8,7 @@ import me.erykczy.colorfullighting.common.ColoredLightEngine;
 import me.erykczy.colorfullighting.common.accessors.LevelAccessor;
 import me.erykczy.colorfullighting.common.accessors.mixin.ClientLevelAccessor;
 import me.erykczy.colorfullighting.common.accessors.mixin.LevelAttachments;
+import me.erykczy.colorfullighting.compat.flywheel.FlywheelCompat;
 import me.erykczy.colorfullighting.compat.valkyrienskies.VsCompat;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.Holder;
@@ -33,12 +34,17 @@ public class LevelMixin implements LevelAttachments {
 	VsCompat colorfullighting$vsCompat;
 	@Unique
 	BlockEntityNbtCache colorfullighting$nbtCache;
+	@Unique
+	FlywheelCompat colorfullighting$flywheelCompat;
 	
 	@Inject(at = @At("TAIL"), method = "<init>")
 	public void postInit(WritableLevelData p_270739_, ResourceKey p_270683_, RegistryAccess p_270200_, Holder p_270240_, Supplier p_270692_, boolean p_270904_, boolean p_270470_, long p_270248_, int p_270466_, CallbackInfo ci) {
+		boolean isClient = false;
+		
 		Level thisLvl = (Level) (Object) this;
 		if (thisLvl instanceof ClientLevel clientLevel) {
 			this.colorfullighting$accessor = new LevelWrapper(thisLvl, ((ClientLevelAccessor) clientLevel).colorfullighting$getLevelRenderer());
+			isClient = true;
 		} else {
 			this.colorfullighting$accessor = new LevelWrapper(thisLvl, null);
 		}
@@ -52,6 +58,11 @@ public class LevelMixin implements LevelAttachments {
 			}
 			
 			colorfullighting$nbtCache = new BlockEntityNbtCache();
+			
+			// TODO: check if flywheel supporting world
+			if (FlywheelCompat.isAvailable() && isClient) {
+				colorfullighting$flywheelCompat = new FlywheelCompat();
+			}
 		}
 	}
 	
@@ -73,6 +84,11 @@ public class LevelMixin implements LevelAttachments {
 	@Override
 	public BlockEntityNbtCache colorfullighting$getNbtCache() {
 		return colorfullighting$nbtCache;
+	}
+	
+	@Override
+	public FlywheelCompat colorfullighting$getFlywheelCompat() {
+		return colorfullighting$flywheelCompat;
 	}
 	
 	@Inject(at = @At("HEAD"), method = "close")

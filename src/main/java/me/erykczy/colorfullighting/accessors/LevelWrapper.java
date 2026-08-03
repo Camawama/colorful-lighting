@@ -7,6 +7,7 @@ import me.erykczy.colorfullighting.common.Config;
 import me.erykczy.colorfullighting.common.accessors.*;
 import me.erykczy.colorfullighting.common.accessors.mixin.ClientLevelAccessor;
 import me.erykczy.colorfullighting.common.accessors.mixin.LevelAttachments;
+import me.erykczy.colorfullighting.compat.flywheel.FlywheelCompat;
 import me.erykczy.colorfullighting.compat.valkyrienskies.VsCompat;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.LevelRenderer;
@@ -167,5 +168,10 @@ public class LevelWrapper implements LevelAccessor, LevelAttachments {
 	@Override
 	public BlockEntityNbtCache colorfullighting$getNbtCache() {
 		return ((LevelAttachments) level).colorfullighting$getNbtCache();
+	}
+	
+	@Override
+	public FlywheelCompat colorfullighting$getFlywheelCompat() {
+		return ((LevelAttachments) level).colorfullighting$getFlywheelCompat();
 	}
 }

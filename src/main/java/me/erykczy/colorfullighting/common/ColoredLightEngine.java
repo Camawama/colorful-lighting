@@ -36,6 +36,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Consumer;
 
 
 /**
@@ -177,14 +178,7 @@ public class ColoredLightEngine {
 			
 			if (OculusCompat.isOculusLoaded())
 				OculusCompat.reloadPack();
-
-            // Flywheel keeps colored light in its own GPU buffers, refreshed only through
-            // onLightUpdate (which is gated on 'enabled'). Recollect everything it tracks so
-            // the buffers immediately reflect the new state instead of freezing stale light.
-            if (net.minecraftforge.fml.ModList.get().isLoaded("flywheel") && FlywheelCompat.isAvailable()) {
-                FlywheelCompat.recollectAllTracked();
-            }
-        }
+		}
     }
     
     public static boolean isEnabled() {
@@ -209,8 +203,16 @@ public class ColoredLightEngine {
 	    InternalPackRegistration.enforcePacks(mc, repo);
     }
 	
+	@Deprecated(forRemoval = true)
 	public static ColoredLightEngine getInstance() {
 		throw new RuntimeException("Unsupported.");
+	}
+	
+	public static void forEach(Consumer<ColoredLightEngine> engineConsumer) {
+		for (ColoredLightEngine coloredLightEngine : TRACKED) {
+			if (coloredLightEngine == null) continue;
+			engineConsumer.accept(coloredLightEngine);
+		}
 	}
 	
 	public void updateFrustum(Frustum frustum) {
@@ -222,6 +224,11 @@ public class ColoredLightEngine {
 		synchronized (TRACKED) {
 			TRACKED.remove(this);
 		}
+		((LevelAttachments) level).colorfullighting$getFlywheelCompat().getStorage().delete();
+	}
+	
+	public LevelAccessor getLevel() {
+		return level;
 	}
 	
 	/**
@@ -671,7 +678,7 @@ public class ColoredLightEngine {
         if (SodiumCompat.isSodiumLoaded() && Minecraft.getInstance().levelRenderer instanceof SodiumWorldRendererAccessor accessor) {
             sodiumRenderer = accessor;
         }
-        boolean flywheelTracking = net.minecraftforge.fml.ModList.get().isLoaded("flywheel") && FlywheelCompat.isAvailable();
+        boolean flywheelTracking = FlywheelCompat.isAvailable();
 
         for (long dirtySection : sectionsToUpdate) {
             int sectionX = SectionPos.x(dirtySection);
@@ -685,8 +692,7 @@ public class ColoredLightEngine {
             }
 
             if (flywheelTracking) {
-                // this engine's level only: section coords overlap across dimensions
-                FlywheelCompat.recollectSectionIfTracked(this.level.getLevel(), dirtySection);
+	            ((LevelAttachments) this.level).colorfullighting$getFlywheelCompat().getStorage().recollectSectionIfTracked(dirtySection);
             }
         }
     }
@@ -762,6 +768,12 @@ public class ColoredLightEngine {
 		queuedChunks.clear();
 		delayedChunkUpdates.clear();
 		pendingDelayedUpdates.clear();
+		
+		if (FlywheelCompat.isAvailable()) {
+			FlywheelCompat compat = ((LevelAttachments) level).colorfullighting$getFlywheelCompat();
+			if (compat != null)
+				compat.getStorage().recollectAllTracked();
+		}
 	}
 	
 	public static class BlockRequests {
