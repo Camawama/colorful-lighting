@@ -2,6 +2,7 @@ package me.erykczy.colorfullighting.mixin;
 
 import me.erykczy.colorfullighting.ColorfulLighting;
 import me.erykczy.colorfullighting.accessors.LevelWrapper;
+import me.erykczy.colorfullighting.api.CLSupportingLevel;
 import me.erykczy.colorfullighting.common.BlockEntityNbtCache;
 import me.erykczy.colorfullighting.common.ColoredLightEngine;
 import me.erykczy.colorfullighting.common.accessors.LevelAccessor;
@@ -42,13 +43,16 @@ public class LevelMixin implements LevelAttachments {
 			this.colorfullighting$accessor = new LevelWrapper(thisLvl, null);
 		}
 		
-		colorfullighting$engine = ColoredLightEngine.create((Level) (Object) this, ColorfulLighting.clientAccessor);
-		
-		if (VsCompat.isAvailable()) {
-			colorfullighting$vsCompat = new VsCompat();
+		// don't initialize CL if the level doesn't support colorful lighting
+		if (this instanceof CLSupportingLevel) {
+			colorfullighting$engine = ColoredLightEngine.create((Level) (Object) this, ColorfulLighting.clientAccessor);
+
+			if (VsCompat.isAvailable()) {
+				colorfullighting$vsCompat = new VsCompat();
+			}
+			
+			colorfullighting$nbtCache = new BlockEntityNbtCache();
 		}
-		
-		colorfullighting$nbtCache = new BlockEntityNbtCache();
 	}
 	
 	@Override
@@ -65,8 +69,14 @@ public class LevelMixin implements LevelAttachments {
 	public LevelAccessor colorfullighting$getAccessor() {
 		return colorfullighting$accessor;
 	}
+	
 	@Override
 	public BlockEntityNbtCache colorfullighting$getNbtCache() {
 		return colorfullighting$nbtCache;
+	}
+	
+	@Inject(at = @At("HEAD"), method = "close")
+	public void preClose(CallbackInfo ci) {
+		colorfullighting$engine.unload();
 	}
 }

@@ -281,8 +281,14 @@ public class WeakList<T> implements List<T> {
 			if (t == null) remove.add(i);
 		}
 		
-		for (Integer i : remove) {
-			remove(i);
+		if (!remove.isEmpty()) {
+			System.out.println("Removing " + remove.size() + " dead references");
+		}
+		
+		int offset = 0;
+		for (int i : remove) {
+			remove(i - offset);
+			offset++;
 		}
 	}
 }

@@ -4,6 +4,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import dev.engine_room.flywheel.backend.gl.GlCompat;
 import dev.engine_room.flywheel.backend.glsl.GlslVersion;
 import me.erykczy.colorfullighting.ColorfulLighting;
+import me.erykczy.colorfullighting.common.ColoredLightEngine;
 import net.minecraft.world.level.LevelAccessor;
 
 import java.util.ArrayList;
@@ -25,6 +26,8 @@ public class FlywheelCompat {
      * engine-wide refresh paths (toggle, dirty sections) and '/cl flywheel report'. Render thread
      * only, like everything else in this compat.
      */
+	// error prone global states...
+	@Deprecated(forRemoval = true)
     private static final List<ColoredLightFlywheelStorage> activeStorages = new ArrayList<>();
 
     public static void init() {
