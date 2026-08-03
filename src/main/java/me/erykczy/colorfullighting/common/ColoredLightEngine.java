@@ -3,10 +3,7 @@ package me.erykczy.colorfullighting.common;
 import me.erykczy.colorfullighting.ColorfulLighting;
 import me.erykczy.colorfullighting.common.accessors.*;
 import me.erykczy.colorfullighting.common.accessors.mixin.LevelAttachments;
-import me.erykczy.colorfullighting.common.util.ColorRGB4;
-import me.erykczy.colorfullighting.common.util.ColorRGB8;
-import me.erykczy.colorfullighting.common.util.MathExt;
-import me.erykczy.colorfullighting.common.util.ShapeOcclusion;
+import me.erykczy.colorfullighting.common.util.*;
 import me.erykczy.colorfullighting.compat.dynamiclights.DynamicLightsCompat;
 import me.erykczy.colorfullighting.compat.flywheel.FlywheelCompat;
 import me.erykczy.colorfullighting.compat.oculus.OculusCompat;
@@ -32,6 +29,7 @@ import net.minecraft.world.phys.shapes.VoxelShape;
 
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 
+import java.lang.ref.WeakReference;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -44,7 +42,7 @@ import java.util.concurrent.locks.ReentrantLock;
  * Most work is delegated to LightPropagator thread.
  */
 public class ColoredLightEngine {
-	private static final List<ColoredLightEngine> TRACKED = new ArrayList<>();
+	private static final WeakList<ColoredLightEngine> TRACKED = new WeakList<>(new ArrayList<>());
 	
 	private final ClientAccessor clientAccessor;
 	private final LevelAccessor level;
@@ -150,6 +148,7 @@ public class ColoredLightEngine {
         reset();
 	    synchronized (TRACKED) {
 		    TRACKED.add(this);
+			TRACKED.prune();
 	    }
     }
 	
@@ -159,6 +158,7 @@ public class ColoredLightEngine {
 			for (ColoredLightEngine coloredLightEngine : TRACKED) {
 				coloredLightEngine.reset();
 			}
+			TRACKED.prune();
 		}
 //        reset();
 	}
@@ -178,7 +178,7 @@ public class ColoredLightEngine {
             // onLightUpdate (which is gated on 'enabled'). Recollect everything it tracks so
             // the buffers immediately reflect the new state instead of freezing stale light.
             if (net.minecraftforge.fml.ModList.get().isLoaded("flywheel") && FlywheelCompat.isAvailable()) {
-                FlywheelCompat.getInstance().flywheelColoredLightStorage.recollectAllTracked();
+                FlywheelCompat.recollectAllTracked();
             }
         }
     }
@@ -215,7 +215,7 @@ public class ColoredLightEngine {
 	
 	public void unload() {
 		synchronized (TRACKED) {
-			TRACKED.remove(this);
+//			TRACKED.remove(this);
 		}
 	}
 	
@@ -679,7 +679,8 @@ public class ColoredLightEngine {
             }
 
             if (flywheelTracking) {
-                FlywheelCompat.getInstance().flywheelColoredLightStorage.recollectSectionIfTracked(dirtySection);
+                // this engine's level only: section coords overlap across dimensions
+                FlywheelCompat.recollectSectionIfTracked(this.level.getLevel(), dirtySection);
             }
         }
     }

@@ -246,10 +246,9 @@ public class ClientEventListener {
                                         })
                                         .then(Commands.literal("report")
                                                 .executes(context -> {
-                                                    var compat = me.erykczy.colorfullighting.compat.flywheel.FlywheelCompat.getInstance();
-                                                    String report = compat == null
+                                                    String report = !me.erykczy.colorfullighting.compat.flywheel.FlywheelCompat.isAvailable()
                                                             ? "Flywheel colored light is inactive"
-                                                            : compat.flywheelColoredLightStorage.debugReport();
+                                                            : me.erykczy.colorfullighting.compat.flywheel.FlywheelCompat.debugReportAll();
                                                     ColorfulLighting.LOGGER.info("[CL flywheel] {}", report);
                                                     context.getSource().sendSuccess(() -> Component.literal(report), false);
                                                     return 1;

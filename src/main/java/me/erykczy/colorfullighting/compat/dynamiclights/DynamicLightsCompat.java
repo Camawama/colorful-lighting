@@ -95,10 +95,10 @@ public final class DynamicLightsCompat {
 
     /** Light-emitting blocks placed by dynamic lighting mods, colored by the entity that caused them. */
     private static final Set<ResourceLocation> DYNAMIC_LIGHT_BLOCK_IDS = Set.of(
-            new ResourceLocation("minecraft", "light"),
-            new ResourceLocation("dynamiclights", "lit_air"),
-            new ResourceLocation("dynamiclights", "lit_cave_air"),
-            new ResourceLocation("dynamiclights", "lit_water")
+            ResourceLocation.fromNamespaceAndPath("minecraft", "light"),
+            ResourceLocation.fromNamespaceAndPath("dynamiclights", "lit_air"),
+            ResourceLocation.fromNamespaceAndPath("dynamiclights", "lit_cave_air"),
+            ResourceLocation.fromNamespaceAndPath("dynamiclights", "lit_water")
     );
     /**
      * Resolved to Block instances once at load complete. isDynamicLightBlock runs for every light
@@ -149,7 +149,7 @@ public final class DynamicLightsCompat {
     private DynamicLightsCompat() {}
 
     public static void init() {
-        Set<Block> resolved = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        Set<Block> resolved = Collections.newSetFromMap(new java.util.IdentityHashMap<>());
         for (ResourceLocation id : DYNAMIC_LIGHT_BLOCK_IDS) {
             Block block = ForgeRegistries.BLOCKS.getValue(id);
             if (block != null && block != Blocks.AIR) resolved.add(block);

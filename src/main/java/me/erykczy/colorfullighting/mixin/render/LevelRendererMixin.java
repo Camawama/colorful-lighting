@@ -42,6 +42,14 @@ public class LevelRendererMixin implements LevelRendererAccessor {
         if(CreateCompat.isAvailable() && CreateCompat.getInstance().colorfullighting$getLightColor(level, state, pos, cir))
             return;
 
+        // Not every BlockAndTintGetter carries our attachments: flywheel bakes instance meshes
+        // against EmptyVirtualBlockGetter (on its worker threads) and catnip's SuperByteBuffer
+        // path uses its own virtual getter — neither is a Level, so there is no engine to sample.
+        // Leave those to vanilla lighting instead of casting blindly.
+        if (!(level instanceof LevelAttachments attachments)) {
+            return;
+        }
+
         int skyLight = level.getBrightness(LightLayer.SKY, pos);
         if(state.emissiveRendering(level, pos)) {
             BlockStateAccessor stateAccessor = new BlockStateWrapper(state);
@@ -52,7 +60,7 @@ public class LevelRendererMixin implements LevelRendererAccessor {
             }
         }
 		
-        int color = ((LevelAttachments) level).colorfullighting$getEngine().sampleLightColorInt(pos);
+        int color = attachments.colorfullighting$getEngine().sampleLightColorInt(pos);
         cir.setReturnValue(SodiumPackedLightData.packDataFromRGB4(skyLight, color));
     }
 	

@@ -41,7 +41,7 @@ public class ColorfulLighting
         // such session self-documenting: flywheel dumps each assembled shader to
         // <gameDir>/flywheel_sources/. Set here because this runs before flywheel's Compilation
         // class loads (it reads the property once in its static initializer).
-        if (me.erykczy.colorfullighting.common.ColorfulLightingConfig.flywheelForceTextureMode()) {
+        if (ColorfulLightingConfig.flywheelForceTextureMode()) {
             System.setProperty("flw.dumpShaderSource", "true");
             LOGGER.info("flywheelForceTextureMode: enabling flywheel shader source dumps (flywheel_sources/)");
         }
