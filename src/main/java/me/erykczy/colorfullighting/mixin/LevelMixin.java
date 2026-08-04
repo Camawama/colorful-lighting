@@ -93,6 +93,8 @@ public class LevelMixin implements LevelAttachments {
 	
 	@Inject(at = @At("HEAD"), method = "close")
 	public void preClose(CallbackInfo ci) {
-		colorfullighting$engine.unload();
+		if (colorfullighting$engine != null) {
+			colorfullighting$engine.unload();
+		}
 	}
 }

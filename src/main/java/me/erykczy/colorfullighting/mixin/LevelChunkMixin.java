@@ -57,7 +57,9 @@ public abstract class LevelChunkMixin {
         if (!Minecraft.getInstance().isSameThread()) return;
 		
 	    Level level = ((LevelChunk) (Object) this).getLevel();
-	    ((LevelAttachments) level).colorfullighting$getNbtCache().onBlockEntityAdded(blockEntity);
+	    BlockEntityNbtCache nbtCache = ((LevelAttachments) level).colorfullighting$getNbtCache();
+	    if (nbtCache == null) return; // virtual levels have no colored lighting attachments
+	    nbtCache.onBlockEntityAdded(blockEntity);
     }
 
     @Inject(method = "removeBlockEntity", at = @At("TAIL"))
@@ -66,6 +68,8 @@ public abstract class LevelChunkMixin {
         if (!Minecraft.getInstance().isSameThread()) return;
 	    
 		Level level = ((LevelChunk) (Object) this).getLevel();
-        ((LevelAttachments) level).colorfullighting$getNbtCache().onBlockEntityRemoved(pos);
+        BlockEntityNbtCache nbtCache = ((LevelAttachments) level).colorfullighting$getNbtCache();
+        if (nbtCache == null) return; // virtual levels have no colored lighting attachments
+        nbtCache.onBlockEntityRemoved(pos);
     }
 }

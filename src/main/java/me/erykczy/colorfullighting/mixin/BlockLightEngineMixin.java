@@ -19,6 +19,10 @@ public abstract class BlockLightEngineMixin {
             return;
         }
         if(!Minecraft.getInstance().isSameThread()) return; // only client side
-        ((LevelAttachments) ((LightEngineAccessor) this).colorfullighting$getChunkGetter().getLevel()).colorfullighting$getEngine().onBlockLightPropertiesChanged(BlockPos.of(packedPos));
+        // virtual levels (e.g. Create's VirtualRenderWorld) have no colored light engine
+        if (!(((LightEngineAccessor) this).colorfullighting$getChunkGetter().getLevel() instanceof LevelAttachments attachments)) return;
+        ColoredLightEngine engine = attachments.colorfullighting$getEngine();
+        if (engine == null) return;
+        engine.onBlockLightPropertiesChanged(BlockPos.of(packedPos));
     }
 }

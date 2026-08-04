@@ -29,7 +29,11 @@ public class LevelLightEngineMixin implements LightEngineAccessor {
             return;
         }
         if(!Minecraft.getInstance().isSameThread()) return; // only client side
-        ((LevelAttachments) colorfullighting$lightChunkGetter.getLevel()).colorfullighting$getEngine().onLightUpdate();
+        // virtual levels (e.g. Create's VirtualRenderWorld) have no colored light engine
+        if (!(colorfullighting$lightChunkGetter.getLevel() instanceof LevelAttachments attachments)) return;
+        ColoredLightEngine engine = attachments.colorfullighting$getEngine();
+        if (engine == null) return;
+        engine.onLightUpdate();
     }
 	
 	@Override
