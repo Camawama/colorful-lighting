@@ -2,24 +2,13 @@ package me.erykczy.colorfullighting.mixin.render;
 
 import me.erykczy.colorfullighting.common.ColoredLightEngine;
 import me.erykczy.colorfullighting.common.Config;
+import me.erykczy.colorfullighting.common.accessors.mixin.LevelAttachments;
 import me.erykczy.colorfullighting.common.util.ColorRGB8;
 import me.erykczy.colorfullighting.common.util.PackedLightData;
-import net.minecraft.client.renderer.entity.DragonFireballRenderer;
 import net.minecraft.client.renderer.entity.EntityRenderer;
-import net.minecraft.client.renderer.entity.ThrownItemRenderer;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.registries.Registries;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.ExperienceOrb;
-import net.minecraft.world.entity.GlowSquid;
-import net.minecraft.world.entity.animal.allay.Allay;
-import net.minecraft.world.entity.decoration.ItemFrame;
-import net.minecraft.world.entity.monster.Blaze;
-import net.minecraft.world.entity.monster.MagmaCube;
-import net.minecraft.world.entity.projectile.DragonFireball;
-import net.minecraft.world.entity.projectile.EyeOfEnder;
-import net.minecraft.world.entity.projectile.ShulkerBullet;
 import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.block.Blocks;
 import org.spongepowered.asm.mixin.Mixin;
@@ -54,12 +43,12 @@ public class EntityRendererMixin {
 
     @Inject(method = "getPackedLightCoords", at = @At("HEAD"), cancellable = true)
     private <T extends Entity>void colorfullighting$getPackedLightCoords(T entity, float partialTicks, CallbackInfoReturnable<Integer> cir) {
-        if (!ColoredLightEngine.getInstance().isEnabled()) {
+        if (!ColoredLightEngine.isEnabled()) {
             return;
         }
         BlockPos blockpos = BlockPos.containing(entity.getLightProbePosition(partialTicks));
         int skyLight = entity.level().getBrightness(LightLayer.SKY, blockpos);
-        ColorRGB8 color = ColoredLightEngine.getInstance().sampleTrilinearLightColor(entity.getLightProbePosition(partialTicks));
+        ColorRGB8 color = ((LevelAttachments) entity.level()).colorfullighting$getEngine().sampleTrilinearLightColor(entity.getLightProbePosition(partialTicks));
         if(entity.isOnFire() || FIRE_LIT_ENTITIES.contains(entity.getType())) {
             ColorRGB8 fireColor = ColorRGB8.fromRGB4(Config.getLightColor(Blocks.FIRE));
             color = ColorRGB8.fromRGB8(

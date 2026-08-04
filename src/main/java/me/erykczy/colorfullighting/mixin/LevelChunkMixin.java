@@ -2,6 +2,7 @@ package me.erykczy.colorfullighting.mixin;
 
 import me.erykczy.colorfullighting.common.BlockEntityNbtCache;
 import me.erykczy.colorfullighting.common.ColoredLightEngine;
+import me.erykczy.colorfullighting.common.accessors.mixin.LevelAttachments;
 import me.erykczy.colorfullighting.common.util.ShapeOcclusion;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
@@ -10,7 +11,9 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.lighting.LightEngine;
+import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -24,10 +27,14 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  */
 @Mixin(LevelChunk.class)
 public abstract class LevelChunkMixin {
-    @Inject(method = "setBlockState", at = @At("RETURN"))
+	@Shadow
+	@Final
+	private Level level;
+	
+	@Inject(method = "setBlockState", at = @At("RETURN"))
     private void colorfullighting$onSetBlockState(BlockPos pos, BlockState newState, boolean isMoving, CallbackInfoReturnable<BlockState> cir) {
-        ColoredLightEngine engine = ColoredLightEngine.getInstance();
-        if (engine == null || !engine.isEnabled()) return;
+        ColoredLightEngine engine = ((LevelAttachments) level).colorfullighting$getEngine();
+        if (engine == null || !ColoredLightEngine.isEnabled()) return;
 
         BlockState oldState = cir.getReturnValue();
         if (oldState == null) return; // no change happened
@@ -48,13 +55,21 @@ public abstract class LevelChunkMixin {
     private void colorfullighting$onBlockEntityAdded(BlockEntity blockEntity, CallbackInfo ci) {
         if (!((LevelChunk) (Object) this).getLevel().isClientSide) return;
         if (!Minecraft.getInstance().isSameThread()) return;
-        BlockEntityNbtCache.onBlockEntityAdded(blockEntity);
+		
+	    Level level = ((LevelChunk) (Object) this).getLevel();
+	    BlockEntityNbtCache nbtCache = ((LevelAttachments) level).colorfullighting$getNbtCache();
+	    if (nbtCache == null) return; // virtual levels have no colored lighting attachments
+	    nbtCache.onBlockEntityAdded(blockEntity);
     }
 
     @Inject(method = "removeBlockEntity", at = @At("TAIL"))
     private void colorfullighting$onBlockEntityRemoved(BlockPos pos, CallbackInfo ci) {
         if (!((LevelChunk) (Object) this).getLevel().isClientSide) return;
         if (!Minecraft.getInstance().isSameThread()) return;
-        BlockEntityNbtCache.onBlockEntityRemoved(pos);
+	    
+		Level level = ((LevelChunk) (Object) this).getLevel();
+        BlockEntityNbtCache nbtCache = ((LevelAttachments) level).colorfullighting$getNbtCache();
+        if (nbtCache == null) return; // virtual levels have no colored lighting attachments
+        nbtCache.onBlockEntityRemoved(pos);
     }
 }

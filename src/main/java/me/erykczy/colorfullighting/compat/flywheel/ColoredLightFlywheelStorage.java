@@ -10,6 +10,9 @@ import dev.engine_room.flywheel.backend.gl.buffer.GlBufferUsage;
 import it.unimi.dsi.fastutil.longs.Long2IntMap;
 import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
 import me.erykczy.colorfullighting.ColorfulLighting;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LevelAccessor;
+import org.jetbrains.annotations.Nullable;
 import org.lwjgl.opengl.GL15C;
 import org.lwjgl.opengl.GL30C;
 import org.lwjgl.opengl.GL43C;
@@ -33,6 +36,17 @@ public class ColoredLightFlywheelStorage {
     public static final int COLORED_LIGHT_TEXTURE_UNIT = 10;
     /** Sampler uniform declared by colored_light.glsl below GLSL 430; bound by GlProgramMixin. */
     public static final String COLORED_LIGHT_SAMPLER_NAME = "_cl_coloredLightSections";
+
+    /**
+     * The level this storage collects light for — the level of the flywheel LightStorage that
+     * owns it (one ColoredLightFlywheelStorage per LightStorage, see LightStorageMixin). With
+     * mods like Immersive Portals or Ponder, several levels have live flywheel engines at once;
+     * the level is what keeps each storage sampling its own dimension's ColoredLightEngine
+     * instead of another level's colors. Null only for FlywheelCompat's placeholder storage,
+     * which never tracks a section.
+     */
+    @Nullable
+    private final LevelAccessor level;
 
     public final CpuArena arena;
     private final Long2IntMap section2ArenaIndex;
@@ -66,11 +80,12 @@ public class ColoredLightFlywheelStorage {
 
     private boolean deleted = false;
 
-    public ColoredLightFlywheelStorage() {
+    public ColoredLightFlywheelStorage(@Nullable LevelAccessor level) {
+        this.level = level;
         this.arena = new CpuArena(SECTION_SIZE_BYTES, DEFAULT_ARENA_CAPACITY_SECTIONS);
         this.section2ArenaIndex = new Long2IntOpenHashMap();
         this.section2ArenaIndex.defaultReturnValue(INVALID_SECTION);
-        this.collector = new SlowLightCollector();
+        this.collector = new SlowLightCollector(level);
 
         if (FlywheelCompat.isTextureFallback()) {
             maxFallbackSections = Math.max(1, TextureBuffer.MAX_TEXELS / BLOCKS_PER_SECTION);
@@ -115,6 +130,7 @@ public class ColoredLightFlywheelStorage {
     }
 
     private int indexForSection(long section) {
+	    if (level == null) return 0;
         int out = section2ArenaIndex.get(section);
 
         // Need to allocate.
@@ -126,6 +142,7 @@ public class ColoredLightFlywheelStorage {
     }
 
     public void removeSection(long section) {
+	    if (level == null) return;
         if (deleted) return;
         int index = section2ArenaIndex.remove(section);
         if (index != INVALID_SECTION) {
@@ -134,6 +151,7 @@ public class ColoredLightFlywheelStorage {
     }
 
     public void collectSection(long section) {
+	    if (level == null) return;
         if (deleted) return;
         int index = indexForSection(section);
 
@@ -148,6 +166,7 @@ public class ColoredLightFlywheelStorage {
     }
 
     public void recollectSectionIfTracked(long section) {
+	    if (level == null) return;
         if (deleted) return;
         if (!section2ArenaIndex.containsKey(section)) return;
         collectSection(section);
@@ -159,6 +178,7 @@ public class ColoredLightFlywheelStorage {
      * buffers would keep the last collected colored light forever after a disable.
      */
     public void recollectAllTracked() {
+	    if (level == null) return;
         if (deleted) return;
         for (long section : section2ArenaIndex.keySet().toLongArray()) {
             collectSection(section);
@@ -170,6 +190,7 @@ public class ColoredLightFlywheelStorage {
      * data store, so every section is marked changed to be re-uploaded from the CPU arena.
      */
     private void ensureSsboCapacity() {
+	    if (level == null) return;
         long needed = (long) capacity() * SECTION_SIZE_BYTES;
         if (ssboHandle != 0 && needed <= ssboByteCapacity) return;
 
@@ -184,6 +205,7 @@ public class ColoredLightFlywheelStorage {
     }
 
     public void uploadChangedSections(StagingBuffer staging) {
+	    if (level == null) return;
         if (deleted) return;
         ensureSsboCapacity();
         for (int i = changed.nextSetBit(0); i >= 0; i = changed.nextSetBit(i + 1)) {
@@ -199,6 +221,7 @@ public class ColoredLightFlywheelStorage {
      * which always holds all the data.
      */
     public void uploadChangedSectionsDirect() {
+	    if (level == null) return;
         if (deleted) return;
         if (changed.isEmpty()) return;
 
@@ -235,7 +258,7 @@ public class ColoredLightFlywheelStorage {
     }
 
     public void bindBuffers() {
-        if (deleted) return;
+	    if (deleted) return;
         if (fallbackTexture != null) {
             // mirrors InstancedLight.bind: tracked active-texture switch, re-attach every bind
             GlTextureUnit.T10.makeActive();
@@ -256,7 +279,7 @@ public class ColoredLightFlywheelStorage {
         if (deleted) return "storage is deleted";
         int tracked = section2ArenaIndex.size();
         if (fallbackBuffer == null) {
-            return "SSBO mode; tracked sections: " + tracked + ", buffer " + ssboByteCapacity + " bytes (handle " + ssboHandle + ")";
+            return "[" + describeLevel() + "] SSBO mode; tracked sections: " + tracked + ", buffer " + ssboByteCapacity + " bytes (handle " + ssboHandle + ")";
         }
 
         long bytes = Math.min(fallbackBuffer.size(), (long) Math.min(capacity(), maxFallbackSections) * SECTION_SIZE_BYTES);
@@ -276,10 +299,25 @@ public class ColoredLightFlywheelStorage {
             if (value != 0) gpuNonZero++;
         }
 
-        return "texture mode; tracked sections: " + tracked
+        return "[" + describeLevel() + "] texture mode; tracked sections: " + tracked
                 + ", buffer " + fallbackBuffer.size() + " bytes (buffer handle " + fallbackBuffer.handle()
                 + ", texture handle " + fallbackTexture.handle() + ", unit " + COLORED_LIGHT_TEXTURE_UNIT + ")"
                 + ", CPU nonzero ints: " + cpuNonZero
                 + ", GPU nonzero ints: " + gpuNonZero;
     }
+
+    /**
+     * Identifies which level's storage a log or report line is about. A dimension id when the
+     * level is a real Level; fake levels fall back to their class name — that they show up as a
+     * distinct storage at all is the point.
+     */
+    public String describeLevel() {
+        if (level == null) return "placeholder";
+        if (level instanceof Level realLevel) return realLevel.dimension().location().toString();
+        return level.getClass().getSimpleName();
+    }
+	
+	public boolean isDeleted() {
+		return deleted;
+	}
 }

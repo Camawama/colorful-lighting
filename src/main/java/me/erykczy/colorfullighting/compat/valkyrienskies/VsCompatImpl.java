@@ -3,12 +3,13 @@ package me.erykczy.colorfullighting.compat.valkyrienskies;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import me.erykczy.colorfullighting.common.ColoredLightEngine;
 import me.erykczy.colorfullighting.common.ViewArea;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.multiplayer.ClientLevel;
+import me.erykczy.colorfullighting.common.accessors.mixin.LevelAttachments;
 import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.Level;
 import org.valkyrienskies.core.api.ships.Ship;
+import org.valkyrienskies.core.internal.world.VsiShipWorld;
+import org.valkyrienskies.mod.common.VSGameUtilsKt;
 
-import java.lang.reflect.Method;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -27,25 +28,25 @@ import java.util.Set;
  * used through the stable {@code org.valkyrienskies.core.api} types.
  */
 final class VsCompatImpl {
-    private static Method getShipObjectWorld;
-    private static Method getLoadedShips;
-    private static Class<?> loadedShipsOwner;
-
     /** Per-ship state from the previous tick, so unchanged ships are not re-snapshotted. */
-    private static final Map<Long, TrackedShip> tracked = new HashMap<>();
+    private final Map<Long, TrackedShip> tracked = new HashMap<>();
 
     /** Cheap change signature: the region only needs rebuilding when one of these moves. */
     private record ShipShape(int minX, int minY, int minZ, int maxX, int maxY, int maxZ, int activeChunkCount) {}
     private record TrackedShip(ShipShape shape, VsCompat.ShipSnapshot snapshot, ColoredLightEngine.LightRegion region) {}
-
-    private VsCompatImpl() {}
+	
+	private final VsCompat compat;
+	
+    public VsCompatImpl(VsCompat compat) {
+		this.compat = compat;
+	}
 
     /**
      * The top three rows of the affine transform, laid out the way
      * {@link VsCompat.ShipMirror#apply} expects. Copied out so the published mirror never holds a
      * live VS matrix that physics could mutate under a reader thread.
      */
-    private static double[] affineRows(org.joml.Matrix4dc m) {
+    private double[] affineRows(org.joml.Matrix4dc m) {
         return new double[]{
                 m.m00(), m.m10(), m.m20(), m.m30(),
                 m.m01(), m.m11(), m.m21(), m.m31(),
@@ -53,33 +54,24 @@ final class VsCompatImpl {
         };
     }
 
-    static void tick() throws ReflectiveOperationException {
-        ClientLevel level = Minecraft.getInstance().level;
-        ColoredLightEngine engine = ColoredLightEngine.getInstance();
-        if (level == null || engine == null) {
+    void tick(Level level) {
+        ColoredLightEngine engine = ((LevelAttachments) level).colorfullighting$getEngine();
+        if (engine == null) {
             if (!tracked.isEmpty()) {
                 tracked.clear();
-                VsCompat.publish(new VsCompat.ShipSnapshot[0]);
+                compat.publish(new VsCompat.ShipSnapshot[0]);
             }
-            VsCompat.publishMirrors(new VsCompat.ShipMirror[0]);
+            compat.publishMirrors(new VsCompat.ShipMirror[0]);
             return;
         }
 
-        if (getShipObjectWorld == null) {
-            getShipObjectWorld = Class.forName("org.valkyrienskies.mod.common.VSGameUtilsKt")
-                    .getMethod("getShipObjectWorld", ClientLevel.class);
-        }
-        Object shipWorld = getShipObjectWorld.invoke(null, level);
+        VsiShipWorld shipWorld = VSGameUtilsKt.getShipObjectWorld(level);
         Collection<?> ships;
         if (shipWorld == null) {
             ships = List.of();
         } else {
-            if (getLoadedShips == null || loadedShipsOwner != shipWorld.getClass()) {
-                loadedShipsOwner = shipWorld.getClass();
-                getLoadedShips = loadedShipsOwner.getMethod("getLoadedShips");
-            }
             // QueryableShipData extends java.util.Collection in every VS version
-            ships = (Collection<?>) getLoadedShips.invoke(shipWorld);
+            ships = shipWorld.getLoadedShips();
         }
 
         boolean snapshotChanged = false;
@@ -135,12 +127,12 @@ final class VsCompatImpl {
         }
         if (tracked.keySet().retainAll(seen)) snapshotChanged = true;
 
-        VsCompat.publishMirrors(mirrors.toArray(new VsCompat.ShipMirror[0]));
+        compat.publishMirrors(mirrors.toArray(new VsCompat.ShipMirror[0]));
 
         if (snapshotChanged) {
             // Publish before syncing the engine: once sections exist, propagation may immediately
             // consult isKnownEmptyShipChunk from the propagator thread.
-            VsCompat.publish(tracked.values().stream().map(TrackedShip::snapshot).toArray(VsCompat.ShipSnapshot[]::new));
+            compat.publish(tracked.values().stream().map(TrackedShip::snapshot).toArray(VsCompat.ShipSnapshot[]::new));
         }
 
         Map<Long, ColoredLightEngine.LightRegion> desired = new HashMap<>();

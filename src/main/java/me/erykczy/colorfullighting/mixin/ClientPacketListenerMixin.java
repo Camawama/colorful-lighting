@@ -3,7 +3,9 @@ package me.erykczy.colorfullighting.mixin;
 import me.erykczy.colorfullighting.common.BeaconEffectSync;
 import me.erykczy.colorfullighting.common.BlockEntityNbtCache;
 import me.erykczy.colorfullighting.common.ColoredLightEngine;
+import me.erykczy.colorfullighting.common.accessors.mixin.LevelAttachments;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.protocol.Packet;
@@ -12,6 +14,7 @@ import net.minecraft.network.protocol.game.ClientboundExplodePacket;
 import net.minecraft.network.protocol.game.ServerboundSetBeaconPacket;
 import net.minecraft.world.level.ChunkPos;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -27,14 +30,16 @@ Until I find a better way to handle light updates, this will do.
 
 @Mixin(ClientPacketListener.class)
 public class ClientPacketListenerMixin {
-
-    @Inject(
+	
+	@Shadow
+	private ClientLevel level;
+	
+	@Inject(
             method = "handleExplosion(Lnet/minecraft/network/protocol/game/ClientboundExplodePacket;)V",
             at = @At("TAIL")
     )
     private void colorfullighting$handleExplosion(ClientboundExplodePacket packet, CallbackInfo ci) {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.level == null) return;
+        if (level == null) return;
 
         List<BlockPos> toBlow = packet.getToBlow();
         if (toBlow == null || toBlow.isEmpty()) return;
@@ -43,7 +48,7 @@ public class ClientPacketListenerMixin {
         for (BlockPos pos : toBlow) {
             ChunkPos cp = new ChunkPos(pos);
             if (rebuilt.add(cp.toLong())) {
-                ColoredLightEngine.getInstance().rebuildChunk(cp, 500);
+	            ((LevelAttachments) level).colorfullighting$getEngine().rebuildChunk(cp, 500);
             }
         }
     }
@@ -58,8 +63,8 @@ public class ClientPacketListenerMixin {
             at = @At("TAIL")
     )
     private void colorfullighting$handleBlockEntityData(ClientboundBlockEntityDataPacket packet, CallbackInfo ci) {
-        if (!ColoredLightEngine.getInstance().isEnabled()) return;
-        BlockEntityNbtCache.onBlockEntityDataChanged(packet.getPos());
+        if (!ColoredLightEngine.isEnabled()) return;
+	    ((LevelAttachments) level).colorfullighting$getNbtCache().onBlockEntityDataChanged(packet.getPos());
     }
 
     /**
@@ -69,8 +74,8 @@ public class ClientPacketListenerMixin {
     @Inject(method = "send(Lnet/minecraft/network/protocol/Packet;)V", at = @At("HEAD"))
     private void colorfullighting$send(Packet<?> packet, CallbackInfo ci) {
         if (!(packet instanceof ServerboundSetBeaconPacket beaconPacket)) return;
-        if (!ColoredLightEngine.getInstance().isEnabled()) return;
+        if (!ColoredLightEngine.isEnabled()) return;
         Minecraft mc = Minecraft.getInstance();
-        BeaconEffectSync.onSetBeaconEffects(mc.level, mc.player, beaconPacket.getPrimary(), beaconPacket.getSecondary());
+        BeaconEffectSync.onSetBeaconEffects(level, mc.player, beaconPacket.getPrimary(), beaconPacket.getSecondary());
     }
 }

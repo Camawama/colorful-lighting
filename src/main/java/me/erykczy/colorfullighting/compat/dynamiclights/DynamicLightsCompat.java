@@ -4,6 +4,7 @@ import me.erykczy.colorfullighting.ColorfulLighting;
 import me.erykczy.colorfullighting.common.ColoredLightEngine;
 import me.erykczy.colorfullighting.common.Config;
 import me.erykczy.colorfullighting.common.accessors.LevelAccessor;
+import me.erykczy.colorfullighting.common.accessors.mixin.LevelAttachments;
 import me.erykczy.colorfullighting.common.util.ColorRGB4;
 import me.erykczy.colorfullighting.compat.sodium.SodiumCompat;
 import me.erykczy.colorfullighting.compat.valkyrienskies.VsCompat;
@@ -94,10 +95,10 @@ public final class DynamicLightsCompat {
 
     /** Light-emitting blocks placed by dynamic lighting mods, colored by the entity that caused them. */
     private static final Set<ResourceLocation> DYNAMIC_LIGHT_BLOCK_IDS = Set.of(
-            new ResourceLocation("minecraft", "light"),
-            new ResourceLocation("dynamiclights", "lit_air"),
-            new ResourceLocation("dynamiclights", "lit_cave_air"),
-            new ResourceLocation("dynamiclights", "lit_water")
+            ResourceLocation.fromNamespaceAndPath("minecraft", "light"),
+            ResourceLocation.fromNamespaceAndPath("dynamiclights", "lit_air"),
+            ResourceLocation.fromNamespaceAndPath("dynamiclights", "lit_cave_air"),
+            ResourceLocation.fromNamespaceAndPath("dynamiclights", "lit_water")
     );
     /**
      * Resolved to Block instances once at load complete. isDynamicLightBlock runs for every light
@@ -148,7 +149,7 @@ public final class DynamicLightsCompat {
     private DynamicLightsCompat() {}
 
     public static void init() {
-        Set<Block> resolved = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        Set<Block> resolved = Collections.newSetFromMap(new java.util.IdentityHashMap<>());
         for (ResourceLocation id : DYNAMIC_LIGHT_BLOCK_IDS) {
             Block block = ForgeRegistries.BLOCKS.getValue(id);
             if (block != null && block != Blocks.AIR) resolved.add(block);
@@ -180,10 +181,9 @@ public final class DynamicLightsCompat {
      * sources and/or scans luminous entities, into an immutable array so light sampling on
      * chunk-build threads never touches live collections. Called once per client tick.
      */
-    public static void clientTick() {
-        ColoredLightEngine engine = ColoredLightEngine.getInstance();
-        ClientLevel level = Minecraft.getInstance().level;
-        if (engine == null || !engine.isEnabled() || level == null) {
+    public static void clientTick(ClientLevel level) {
+	    ColoredLightEngine engine = ((LevelAttachments) level).colorfullighting$getEngine();
+	    if (engine == null || !ColoredLightEngine.isEnabled() || level == null) {
             entitySources = NO_SOURCES;
             blockColorSources = NO_COLOR_SOURCES;
             trackedAnchors = new HashMap<>();
@@ -287,15 +287,17 @@ public final class DynamicLightsCompat {
     private static void addColorSource(List<ColorSource> colors, Entity entity, ColorRGB4 color) {
         double x = entity.getX(), y = entity.getY(), z = entity.getZ();
         colors.add(new ColorSource(x, y, z, color));
-        if (!VsCompat.hasShipMirrors()) return;
+		
+		LevelAttachments attachments = (LevelAttachments) entity.level();
+        if (!VsCompat.hasShipMirrors(attachments)) return;
 
-        double[] world = VsCompat.shipyardToWorld(x, y, z);
+        double[] world = VsCompat.shipyardToWorld(attachments, x, y, z);
         if (world != null) {
             // shipyard resident (item frame on a ship): mirror out into the world
             colors.add(new ColorSource(world[0], world[1], world[2], color));
         } else {
             // world entity near a ship: mirror into each such ship's shipyard
-            VsCompat.forEachShipyardMirror(x, y, z, ENTITY_SHIP_MIRROR_RANGE,
+            VsCompat.forEachShipyardMirror(attachments, x, y, z, ENTITY_SHIP_MIRROR_RANGE,
                     (mx, my, mz) -> colors.add(new ColorSource(mx, my, mz, color)));
         }
     }
@@ -388,7 +390,7 @@ public final class DynamicLightsCompat {
      * plain white light).
      */
     @Nullable
-    public static ColorRGB4 getDynamicBlockLightColor(BlockPos lightBlockPos) {
+    public static ColorRGB4 getDynamicBlockLightColor(LevelAccessor level, BlockPos lightBlockPos) {
         // Runs on the light-propagator thread, so it must never touch the live entity lists: read the
         // per-tick snapshot instead. Seeing a dynamic light block also arms the colored-entity scan,
         // which stays off for vanilla worlds that never place these blocks.
@@ -411,7 +413,7 @@ public final class DynamicLightsCompat {
             return bestColor;
         }
 
-        ColorRGB4 hue = sampleShipMirrorHue(x, y, z);
+        ColorRGB4 hue = sampleShipMirrorHue(((LevelAttachments) level).colorfullighting$getEngine(), level, x, y, z);
         if (VsCompat.isAvailable()) {
             // remember what resolved (not gated on hasShipMirrors: on world join blocks propagate
             // before the first tick publishes any mirror) so recheckShipMirrorHues can re-propagate
@@ -441,7 +443,7 @@ public final class DynamicLightsCompat {
                 iterator.remove();
                 continue;
             }
-            ColorRGB4 hue = sampleShipMirrorHue(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
+            ColorRGB4 hue = sampleShipMirrorHue(engine, ((LevelAttachments) level).colorfullighting$getAccessor(), pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
             int packed = hue == null ? -1 : packHue(hue);
             if (packed != entry.getValue()) {
                 engine.onBlockLightPropertiesChanged(pos);
@@ -464,18 +466,17 @@ public final class DynamicLightsCompat {
      * distance-dimmed) emission scales it back down in Config.getColorEmission.
      */
     @Nullable
-    private static ColorRGB4 sampleShipMirrorHue(double x, double y, double z) {
-        if (!VsCompat.hasShipMirrors()) return null;
-        ColoredLightEngine engine = ColoredLightEngine.getInstance();
-        if (engine == null || !engine.isEnabled()) return null;
+    private static ColorRGB4 sampleShipMirrorHue(ColoredLightEngine engine, LevelAccessor level, double x, double y, double z) {
+		LevelAttachments attachments = (LevelAttachments) level;
+        if (!VsCompat.hasShipMirrors(attachments)) return null;
 
         int[] max = new int[3];
-        double[] world = VsCompat.shipyardToWorld(x, y, z);
+        double[] world = VsCompat.shipyardToWorld(attachments, x, y, z);
         if (world != null) {
             sampleNeighborhoodMax(engine, world[0], world[1], world[2], max);
         } else {
             // per-channel max over the mirrors: light from several ships blends like light does
-            VsCompat.forEachShipyardMirror(x, y, z, BLOCK_SHIP_MIRROR_RANGE,
+            VsCompat.forEachShipyardMirror(attachments, x, y, z, BLOCK_SHIP_MIRROR_RANGE,
                     (mx, my, mz) -> sampleNeighborhoodMax(engine, mx, my, mz, max));
         }
         int r = max[0], g = max[1], b = max[2];

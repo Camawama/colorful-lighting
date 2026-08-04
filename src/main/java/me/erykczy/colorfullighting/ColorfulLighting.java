@@ -10,7 +10,7 @@ import me.erykczy.colorfullighting.compat.oculus.OculusCompat;
 import me.erykczy.colorfullighting.event.ClientEventListener;
 import me.erykczy.colorfullighting.compat.create.CreateCompat;
 import me.erykczy.colorfullighting.compat.flywheel.FlywheelCompat;
-import me.erykczy.colorfullighting.resourcemanager.CoreShaderRegistration;
+import me.erykczy.colorfullighting.resourcemanager.InternalPackRegistration;
 import me.erykczy.colorfullighting.resourcemanager.ModResourceManagers;
 import net.minecraft.client.Minecraft;
 import net.minecraftforge.api.distmarker.Dist;
@@ -41,7 +41,7 @@ public class ColorfulLighting
         // such session self-documenting: flywheel dumps each assembled shader to
         // <gameDir>/flywheel_sources/. Set here because this runs before flywheel's Compilation
         // class loads (it reads the property once in its static initializer).
-        if (me.erykczy.colorfullighting.common.ColorfulLightingConfig.flywheelForceTextureMode()) {
+        if (ColorfulLightingConfig.flywheelForceTextureMode()) {
             System.setProperty("flw.dumpShaderSource", "true");
             LOGGER.info("flywheelForceTextureMode: enabling flywheel shader source dumps (flywheel_sources/)");
         }
@@ -50,7 +50,7 @@ public class ColorfulLighting
             @Override
             public void run() {
                 ModResourceManagers.register(context.getModEventBus());
-                CoreShaderRegistration.register(context.getModEventBus());
+                InternalPackRegistration.register(context.getModEventBus());
                 MinecraftForge.EVENT_BUS.register(new ClientEventListener());
                 context.getModEventBus().addListener(ColorfulLighting::onClientSetup);
                 context.getModEventBus().addListener(ColorfulLighting::onLoadingComplete);
@@ -59,13 +59,12 @@ public class ColorfulLighting
     }
 
     public static void onClientSetup(FMLClientSetupEvent event) {
-        clientAccessor = new MinecraftWrapper(Minecraft.getInstance());
-        ColoredLightEngine.create(clientAccessor);
-        ColoredLightEngine.getInstance().setEnabled(ColorfulLightingConfig.ENABLED.get());
+	    clientAccessor = new MinecraftWrapper(Minecraft.getInstance());
+        ColoredLightEngine.setEnabled(ColorfulLightingConfig.ENABLED.get());
     }
 
     public static void onLoadingComplete(FMLLoadCompleteEvent event) {
-        ColoredLightEngine.getInstance().onPacksInitialized();
+        ColoredLightEngine.onPacksInitialized();
         if (ModList.get().isLoaded("rubidium") || ModList.get().isLoaded("embeddium") || ModList.get().isLoaded("sodium")) {
             LOGGER.info("Sodium/Embeddium detected!");
         }

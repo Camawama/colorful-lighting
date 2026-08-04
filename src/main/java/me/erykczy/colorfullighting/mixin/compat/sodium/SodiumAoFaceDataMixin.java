@@ -6,6 +6,7 @@ import me.erykczy.colorfullighting.common.ColoredLightEngine;
 import me.erykczy.colorfullighting.common.Config;
 import me.erykczy.colorfullighting.common.accessors.BlockStateAccessor;
 import me.erykczy.colorfullighting.common.accessors.LevelAccessor;
+import me.erykczy.colorfullighting.common.accessors.mixin.LevelAttachments;
 import me.erykczy.colorfullighting.common.util.ColorRGB8;
 import me.erykczy.colorfullighting.compat.sodium.SodiumAoFaceDataExtension;
 import me.erykczy.colorfullighting.compat.sodium.SodiumPackedLightData;
@@ -45,10 +46,11 @@ public abstract class SodiumAoFaceDataMixin implements SodiumAoFaceDataExtension
      */
     @Unique
     private int getBaseColoredLight(LightDataAccess cache, ColoredLightEngine.SectionCursor cursor, int x, int y, int z) {
-        ColoredLightEngine engine = ColoredLightEngine.getInstance();
+	    BlockAndTintGetter level = cache.getWorld();
+        ColoredLightEngine engine = ((LevelAttachments) level).colorfullighting$getEngine();
         int word = cache.get(x, y, z);
 
-        if (!engine.isEnabled()) {
+        if (!ColoredLightEngine.isEnabled()) {
             if (LightDataAccess.unpackEM(word)) {
                 return 0xF000F0;
             }
@@ -59,16 +61,11 @@ public abstract class SodiumAoFaceDataMixin implements SodiumAoFaceDataExtension
 
         if (LightDataAccess.unpackEM(word)) {
             BlockPos pos = new BlockPos(x, y, z);
-            BlockAndTintGetter level = cache.getWorld();
-            BlockState state = level.getBlockState(pos);
-            LevelAccessor levelAccessor = ColorfulLighting.clientAccessor.getLevel();
-            if(levelAccessor != null) {
-                BlockStateAccessor stateAccessor = new BlockStateWrapper(state);
-
-                var emission = Config.getLightColor(stateAccessor);
-                if (!emission.equals(Config.defaultColor)) {
-                    return SodiumPackedLightData.packData(skyLight, ColorRGB8.fromRGB4(emission));
-                }
+			
+	        BlockState state = level.getBlockState(pos);
+	        var emission = Config.getLightColor(state);
+            if (!emission.equals(Config.defaultColor)) {
+                return SodiumPackedLightData.packData(skyLight, ColorRGB8.fromRGB4(emission));
             }
         }
         return SodiumPackedLightData.packDataFromRGB4(skyLight, engine.sampleLightColorPacked(cursor, x, y, z));
@@ -113,7 +110,7 @@ public abstract class SodiumAoFaceDataMixin implements SodiumAoFaceDataExtension
 
     @Unique
     private static int blend(int a, int b, int c, int d) {
-        if (!ColoredLightEngine.getInstance().isEnabled()) {
+        if (!ColoredLightEngine.isEnabled()) {
             int sl_a = (a >> 16) & 0xFF;
             int sl_b = (b >> 16) & 0xFF;
             int sl_c = (c >> 16) & 0xFF;
@@ -185,7 +182,7 @@ public abstract class SodiumAoFaceDataMixin implements SodiumAoFaceDataExtension
      */
     @Inject(method = "initLightData", at = @At("RETURN"))
     public void colorfullighting$initLightData(LightDataAccess cache, BlockPos pos, Direction direction, boolean offset, CallbackInfo ci) {
-        if (!ColoredLightEngine.getInstance().isEnabled()) {
+        if (!ColoredLightEngine.isEnabled()) {
             return;
         }
 
@@ -194,7 +191,8 @@ public abstract class SodiumAoFaceDataMixin implements SodiumAoFaceDataExtension
         final int z = pos.getZ();
 
         // One ThreadLocal lookup for the ten samples below, instead of one each.
-        final ColoredLightEngine.SectionCursor cursor = ColoredLightEngine.getInstance().acquireCursor();
+	    BlockAndTintGetter world = cache.getWorld();
+        final ColoredLightEngine.SectionCursor cursor = ((LevelAttachments) world).colorfullighting$getEngine().acquireCursor();
 
         final int adjX;
         final int adjY;
@@ -282,7 +280,7 @@ public abstract class SodiumAoFaceDataMixin implements SodiumAoFaceDataExtension
     public void unpackLightData() {
         int[] lm = this.lm;
 
-        if (!ColoredLightEngine.getInstance().isEnabled()) {
+        if (!ColoredLightEngine.isEnabled()) {
             // Replicate vanilla/Sodium logic
             float[] bl = this.bl;
             float[] sl = this.sl;
@@ -322,7 +320,7 @@ public abstract class SodiumAoFaceDataMixin implements SodiumAoFaceDataExtension
     @Override
     public int getBlendedLightMap(float[] w) {
         ensureUnpacked();
-        if (!ColoredLightEngine.getInstance().isEnabled()) {
+        if (!ColoredLightEngine.isEnabled()) {
             // Replicate vanilla/Sodium logic
             float r = weightedSum(this.bl, w);
             float s = weightedSum(this.sl, w);

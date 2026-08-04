@@ -3,6 +3,7 @@ package me.erykczy.colorfullighting.common;
 import com.google.gson.JsonElement;
 import me.erykczy.colorfullighting.common.accessors.BlockStateAccessor;
 import me.erykczy.colorfullighting.common.accessors.LevelAccessor;
+import me.erykczy.colorfullighting.common.accessors.mixin.LevelAttachments;
 import me.erykczy.colorfullighting.common.config.VariantList;
 import me.erykczy.colorfullighting.common.util.ColorRGB4;
 import me.erykczy.colorfullighting.common.util.JsonHelper;
@@ -14,6 +15,7 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraftforge.registries.ForgeRegistries;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -109,8 +111,8 @@ public class Config {
      * Blocks with no NBT rules never pay for the lookup.
      */
     @Nullable
-    private static CompoundTag nbtFor(VariantList<?> config, BlockPos pos) {
-        return config.needsNbt() ? BlockEntityNbtCache.get(pos) : null;
+    private static CompoundTag nbtFor(LevelAccessor level, VariantList<?> config, BlockPos pos) {
+        return config.needsNbt() ? ((LevelAttachments) level).colorfullighting$getNbtCache().get(pos) : null;
     }
 
     public static ColorRGB4 getColorEmission(@NotNull LevelAccessor level, BlockPos pos) { return getColorEmission(level, pos, level.getBlockState(pos)); }
@@ -122,7 +124,7 @@ public class Config {
         // nearby entity that caused them; client-lighting mods are handled by the entity
         // tracking in DynamicLightsCompat instead
         if (DynamicLightsCompat.isDynamicLightBlock(block)) {
-            ColorRGB4 dynamicColor = DynamicLightsCompat.getDynamicBlockLightColor(pos);
+            ColorRGB4 dynamicColor = DynamicLightsCompat.getDynamicBlockLightColor(level, pos);
             if (dynamicColor != null) {
                 return dynamicColor.mul(lightEmission);
             }
@@ -130,7 +132,7 @@ public class Config {
 
         VariantList<ColorEmitter> config = colorEmitters.get(block);
         if(config != null) {
-            ColorEmitter emitter = config.resolve(blockState, nbtFor(config, pos));
+            ColorEmitter emitter = config.resolve(blockState, nbtFor(level, config, pos));
             if (emitter != null) {
                 return emitter.color().mul(emitter.overriddenBrightness4 < 0 ? lightEmission : emitter.overriddenBrightness4 / 15.0f);
             }
@@ -189,7 +191,11 @@ public class Config {
         return 1.0f - normalizedDist;
     }
 
+	@Deprecated
     public static ColorRGB4 getLightColor(@NotNull BlockStateAccessor blockState) {
+        return getLightColor(blockState.getBlock());
+    }
+    public static ColorRGB4 getLightColor(@NotNull BlockState blockState) {
         return getLightColor(blockState.getBlock());
     }
     public static ColorRGB4 getLightColor(@Nullable Block block) {
@@ -208,7 +214,7 @@ public class Config {
     public static ColorRGB4 getColoredLightTransmittance(@NotNull LevelAccessor level, BlockPos pos, @NotNull BlockStateAccessor blockState) {
         VariantList<ColorFilter> config = colorFilters.get(blockState.getBlock());
         if(config == null) return ColorRGB4.fromRGB4(15, 15, 15);
-        ColorFilter filter = config.resolve(blockState, nbtFor(config, pos));
+        ColorFilter filter = config.resolve(blockState, nbtFor(level, config, pos));
         return filter != null ? filter.transmittance : ColorRGB4.fromRGB4(15, 15, 15);
     }
 
@@ -247,7 +253,7 @@ public class Config {
     public static int getLightAbsorption(@NotNull LevelAccessor level, BlockPos pos, @NotNull BlockStateAccessor blockState) {
         VariantList<ColorFilter> config = colorFilters.get(blockState.getBlock());
         if(config == null) return -1;
-        ColorFilter filter = config.resolve(blockState, nbtFor(config, pos));
+        ColorFilter filter = config.resolve(blockState, nbtFor(level, config, pos));
         return filter != null ? filter.absorption : -1;
     }
 
@@ -258,7 +264,7 @@ public class Config {
     public static int getEmissionBrightness(@NotNull LevelAccessor level, BlockPos pos, @NotNull BlockStateAccessor blockState) {
         VariantList<ColorEmitter> config = colorEmitters.get(blockState.getBlock());
         if(config != null) {
-            ColorEmitter emitter = config.resolve(blockState, nbtFor(config, pos));
+            ColorEmitter emitter = config.resolve(blockState, nbtFor(level, config, pos));
             if (emitter != null && emitter.overriddenBrightness4 >= 0) {
                 return emitter.overriddenBrightness4;
             }
@@ -280,7 +286,7 @@ public class Config {
     public static int getAbsorption(LevelAccessor level, BlockPos blockPos, BlockStateAccessor blockState) {
         VariantList<ColorEmitter> config = colorAbsorbers.get(blockState.getBlock());
         if(config != null) {
-            ColorEmitter emitter = config.resolve(blockState, nbtFor(config, blockPos));
+            ColorEmitter emitter = config.resolve(blockState, nbtFor(level, config, blockPos));
             if (emitter != null && emitter.overriddenBrightness4 >= 0) {
                 return emitter.overriddenBrightness4;
             }
@@ -296,7 +302,7 @@ public class Config {
         float absorption = getAbsorption(level, pos, blockState) / 15.0f;
         VariantList<ColorEmitter> config = colorAbsorbers.get(blockState.getBlock());
         if(config != null) {
-            ColorEmitter emitter = config.resolve(blockState, nbtFor(config, pos));
+            ColorEmitter emitter = config.resolve(blockState, nbtFor(level, config, pos));
             if (emitter != null) {
                 return emitter.color().mul(emitter.overriddenBrightness4 < 0 ? absorption : emitter.overriddenBrightness4 / 15.0f);
             }

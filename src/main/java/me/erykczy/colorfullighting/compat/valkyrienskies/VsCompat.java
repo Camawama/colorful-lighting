@@ -3,7 +3,9 @@ package me.erykczy.colorfullighting.compat.valkyrienskies;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import me.erykczy.colorfullighting.ColorfulLighting;
 import me.erykczy.colorfullighting.common.ViewArea;
+import me.erykczy.colorfullighting.common.accessors.mixin.LevelAttachments;
 import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.Level;
 
 /**
  * Valkyrien Skies compat: keeps a colored light region (see ColoredLightEngine.LightRegion) alive
@@ -18,19 +20,25 @@ public final class VsCompat {
      * {@link #isKnownEmptyShipChunk} while the client thread replaces the array; entries are never
      * mutated after publication.
      */
-    private static volatile ShipSnapshot[] snapshot = new ShipSnapshot[0];
+	// TODO: needs to not be global state
+    private volatile ShipSnapshot[] snapshot = new ShipSnapshot[0];
 
     /**
      * Per-ship coordinate mapping, republished every client tick (ship transforms change every
      * tick). Read from the light propagator and chunk-build threads via the volatile array; the
      * records and their transform arrays are never mutated after publication.
      */
-    private static volatile ShipMirror[] mirrors = new ShipMirror[0];
+    // TODO: needs to not be global state
+    private volatile ShipMirror[] mirrors = new ShipMirror[0];
 
     /** How far outside a ship's shipyard block bounds a position still counts as that shipyard. */
     private static final double SHIPYARD_MARGIN = 8.0;
 
-    private VsCompat() {}
+	private final VsCompatImpl impl;
+	
+    public VsCompat() {
+		impl = new VsCompatImpl(this);
+    }
 
     public static void init() {
         available = true;
@@ -39,12 +47,12 @@ public final class VsCompat {
     public static boolean isAvailable() {
         return available;
     }
-
-    /** Called once per client tick from ClientEventListener; no-op when VS is absent. */
-    public static void clientTick() {
+	
+	/** Called once per client tick from ClientEventListener; no-op when VS is absent. */
+    public void clientTick(Level level) {
         if (!available) return;
         try {
-            VsCompatImpl.tick();
+            impl.tick(level);
         } catch (Throwable t) {
             available = false;
             snapshot = new ShipSnapshot[0];
@@ -60,7 +68,7 @@ public final class VsCompat {
      * waiting forever for a chunk that will never arrive.
      * Called from the light propagator thread; reads the volatile snapshot published by clientTick.
      */
-    public static boolean isKnownEmptyShipChunk(int chunkX, int chunkZ) {
+    public boolean isKnownEmptyShipChunk(int chunkX, int chunkZ) {
         ShipSnapshot[] ships = snapshot;
         for (ShipSnapshot ship : ships) {
             if (ship.area().contains(chunkX, chunkZ) && !ship.activeChunks().contains(ChunkPos.asLong(chunkX, chunkZ)))
@@ -69,11 +77,11 @@ public final class VsCompat {
         return false;
     }
 
-    static void publish(ShipSnapshot[] ships) {
+    void publish(ShipSnapshot[] ships) {
         snapshot = ships;
     }
 
-    static void publishMirrors(ShipMirror[] ships) {
+    void publishMirrors(ShipMirror[] ships) {
         mirrors = ships;
     }
 
@@ -120,7 +128,7 @@ public final class VsCompat {
     }
 
     /** Whether any ship mirror is published; false whenever VS is absent or no ships are loaded. */
-    public static boolean hasShipMirrors() {
+    public boolean hasShipMirrors() {
         return mirrors.length > 0;
     }
 
@@ -129,7 +137,7 @@ public final class VsCompat {
      * world positions. Shipyard regions are disjoint, so the first containing ship decides.
      * Thread-safe (reads the volatile mirror snapshot).
      */
-    public static double[] shipyardToWorld(double x, double y, double z) {
+    public double[] shipyardToWorld(double x, double y, double z) {
         for (ShipMirror ship : mirrors) {
             if (ship.shipyardContains(x, y, z)) {
                 return ShipMirror.apply(ship.shipToWorld(), x, y, z);
@@ -143,11 +151,35 @@ public final class VsCompat {
      * world bounds inflated by {@code inflate} contain it. Thread-safe (reads the volatile mirror
      * snapshot).
      */
-    public static void forEachShipyardMirror(double x, double y, double z, double inflate, PositionConsumer consumer) {
+    public void forEachShipyardMirror(double x, double y, double z, double inflate, PositionConsumer consumer) {
         for (ShipMirror ship : mirrors) {
             if (!ship.worldContains(x, y, z, inflate)) continue;
             double[] mirrored = ShipMirror.apply(ship.worldToShip(), x, y, z);
             consumer.accept(mirrored[0], mirrored[1], mirrored[2]);
         }
     }
+	
+	public static boolean isKnownEmptyShipChunk(LevelAttachments level, int x, int z) {
+		VsCompat compat = level.colorfullighting$getVSCompat();
+		if (compat == null) return false;
+		return compat.isKnownEmptyShipChunk(x, z);
+	}
+	
+	public static boolean hasShipMirrors(LevelAttachments level) {
+		VsCompat compat = level.colorfullighting$getVSCompat();
+		if (compat == null) return false;
+		return compat.hasShipMirrors();
+	}
+	
+	public static double[] shipyardToWorld(LevelAttachments level, double x, double y, double z) {
+		VsCompat compat = level.colorfullighting$getVSCompat();
+		if (compat == null) return null;
+		return compat.shipyardToWorld(x, y, z);
+	}
+	
+	public static void forEachShipyardMirror(LevelAttachments level, double x, double y, double z, double inflate, PositionConsumer consumer) {
+		VsCompat compat = level.colorfullighting$getVSCompat();
+		if (compat == null) return;
+		compat.forEachShipyardMirror(x, y, z, inflate, consumer);
+	}
 }

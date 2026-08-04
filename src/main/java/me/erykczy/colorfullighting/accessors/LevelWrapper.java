@@ -1,8 +1,13 @@
 package me.erykczy.colorfullighting.accessors;
 
+import me.erykczy.colorfullighting.api.CLClientLevel;
+import me.erykczy.colorfullighting.common.BlockEntityNbtCache;
+import me.erykczy.colorfullighting.common.ColoredLightEngine;
 import me.erykczy.colorfullighting.common.Config;
-import me.erykczy.colorfullighting.common.accessors.BlockStateAccessor;
-import me.erykczy.colorfullighting.common.accessors.LevelAccessor;
+import me.erykczy.colorfullighting.common.accessors.*;
+import me.erykczy.colorfullighting.common.accessors.mixin.ClientLevelAccessor;
+import me.erykczy.colorfullighting.common.accessors.mixin.LevelAttachments;
+import me.erykczy.colorfullighting.compat.flywheel.FlywheelCompat;
 import me.erykczy.colorfullighting.compat.valkyrienskies.VsCompat;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.LevelRenderer;
@@ -13,19 +18,38 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.ChunkStatus;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.function.Consumer;
 
-public class LevelWrapper implements LevelAccessor {
-    private final ClientLevel level;
+public class LevelWrapper implements LevelAccessor, LevelAttachments {
+    private final Level level;
+	@Nullable
     private final LevelRenderer levelRenderer;
+	private final boolean isClient;
+	private final boolean isClLevel;
 
-    public LevelWrapper(@NotNull ClientLevel level, @NotNull LevelRenderer levelRenderer) {
+    public LevelWrapper(@NotNull Level level, @Nullable LevelRenderer levelRenderer) {
         this.level = level;
-        this.levelRenderer = levelRenderer;
+	    this.isClient = level instanceof ClientLevel;
+	    this.isClLevel = level instanceof CLClientLevel;
+		
+		this.levelRenderer = levelRenderer;
     }
-
-    public ClientLevel getWrappedLevel() {
+	
+	public LevelWrapper(Level level) {
+		this.level = level;
+		this.isClient = level instanceof ClientLevel;
+		this.isClLevel = level instanceof CLClientLevel;
+		
+		if (isClient) {
+			levelRenderer = ((ClientLevelAccessor) level).colorfullighting$getLevelRenderer();
+		} else {
+			levelRenderer = null;
+		}
+	}
+	
+	public Level getWrappedLevel() {
         return level;
     }
 
@@ -49,7 +73,7 @@ public class LevelWrapper implements LevelAccessor {
         if (level.getChunkSource().hasChunk(chunkPos.x, chunkPos.z)) return true;
         // Shipyard chunks that hold no ship blocks are never sent to the client: missing there
         // means empty, not "still loading", so propagation may treat them as loaded air.
-        return VsCompat.isKnownEmptyShipChunk(chunkPos.x, chunkPos.z);
+        return VsCompat.isKnownEmptyShipChunk((LevelAttachments) level, chunkPos.x, chunkPos.z);
     }
 
     @Override
@@ -94,7 +118,7 @@ public class LevelWrapper implements LevelAccessor {
         var chunk = level.getChunkSource().getChunk(SectionPos.blockToSectionCoord(pos.getX()), SectionPos.blockToSectionCoord(pos.getZ()), ChunkStatus.FULL, false);
         if(chunk == null) {
             // see hasChunk: an absent block-less shipyard chunk is known to be air
-            if (VsCompat.isKnownEmptyShipChunk(SectionPos.blockToSectionCoord(pos.getX()), SectionPos.blockToSectionCoord(pos.getZ())))
+            if (VsCompat.isKnownEmptyShipChunk((LevelAttachments) level, SectionPos.blockToSectionCoord(pos.getX()), SectionPos.blockToSectionCoord(pos.getZ())))
                 return AIR_STATE;
             return null;
         }
@@ -109,11 +133,45 @@ public class LevelWrapper implements LevelAccessor {
 
     @Override
     public void setSectionDirty(int x, int y, int z) {
-        levelRenderer.setSectionDirty(x, y, z);
+		if (levelRenderer != null)
+			levelRenderer.setSectionDirty(x, y, z);
+		else {
+			if (isClLevel) {
+				((CLClientLevel) level).colorfullighting$setSectionDirty(x, y, z);
+			} else if (isClient) {
+				// not ideal, but it works as a fallback
+				((ClientLevel) level).setSectionDirtyWithNeighbors(x, y, z);
+			}
+		}
     }
 
     @Override
     public Level getLevel() {
         return level;
     }
+	
+	@Override
+	public ColoredLightEngine colorfullighting$getEngine() {
+		return ((LevelAttachments) level).colorfullighting$getEngine();
+	}
+	
+	@Override
+	public VsCompat colorfullighting$getVSCompat() {
+		return ((LevelAttachments) level).colorfullighting$getVSCompat();
+	}
+	
+	@Override
+	public LevelAccessor colorfullighting$getAccessor() {
+		return this;
+	}
+	
+	@Override
+	public BlockEntityNbtCache colorfullighting$getNbtCache() {
+		return ((LevelAttachments) level).colorfullighting$getNbtCache();
+	}
+	
+	@Override
+	public FlywheelCompat colorfullighting$getFlywheelCompat() {
+		return ((LevelAttachments) level).colorfullighting$getFlywheelCompat();
+	}
 }

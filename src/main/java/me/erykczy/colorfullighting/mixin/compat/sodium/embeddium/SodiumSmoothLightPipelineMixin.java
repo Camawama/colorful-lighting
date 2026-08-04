@@ -1,10 +1,11 @@
-package me.erykczy.colorfullighting.mixin.compat.sodium;
+package me.erykczy.colorfullighting.mixin.compat.sodium.embeddium;
 
 import me.erykczy.colorfullighting.common.ColoredLightEngine;
 import me.erykczy.colorfullighting.compat.sodium.SodiumAoFaceDataExtension;
 import me.erykczy.colorfullighting.compat.sodium.SodiumPackedLightData;
 import me.jellysquid.mods.sodium.client.model.light.data.LightDataAccess;
 import me.jellysquid.mods.sodium.client.model.light.data.QuadLightData;
+import me.jellysquid.mods.sodium.client.model.light.smooth.SmoothLightPipeline;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import org.spongepowered.asm.mixin.Mixin;
@@ -19,7 +20,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import java.lang.reflect.Field;
 
 @Pseudo
-@Mixin(targets = "me.jellysquid.mods.sodium.client.model.light.smooth.SmoothLightPipeline", remap = false)
+@Mixin(value = SmoothLightPipeline.class, remap = false)
 public abstract class SodiumSmoothLightPipelineMixin {
 
     @Shadow private LightDataAccess lightCache;
@@ -79,7 +80,7 @@ public abstract class SodiumSmoothLightPipelineMixin {
         
         SodiumAoFaceDataExtension faceData = (SodiumAoFaceDataExtension) faceDataObj;
 
-        if (!ColoredLightEngine.getInstance().isEnabled()) {
+        if (!ColoredLightEngine.isEnabled()) {
             int lightMap = faceData.getBlendedLightMap(w);
             float ao = faceData.getBlendedShade(w);
 
@@ -114,7 +115,7 @@ public abstract class SodiumSmoothLightPipelineMixin {
 
         float ao = (n1.getBlendedShade(w) * n1d) + (n2.getBlendedShade(w) * n2d);
         
-        if (!ColoredLightEngine.getInstance().isEnabled()) {
+        if (!ColoredLightEngine.isEnabled()) {
             // Replicate vanilla/Sodium logic
             // We need to get the blended lightmap from n1 and n2, unpack them, interpolate, and repack
             int lm1 = n1.getBlendedLightMap(w);

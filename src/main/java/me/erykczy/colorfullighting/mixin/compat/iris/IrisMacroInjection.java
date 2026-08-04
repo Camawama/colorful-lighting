@@ -34,7 +34,7 @@ public class IrisMacroInjection {
 	)
 	private static void colorfullighting$injectClStandardDefines(CallbackInfoReturnable<ImmutableList<StringPair>> cir, ArrayList<StringPair> standardDefines)
 	{
-		if (!ColoredLightEngine.getInstance().isEnabled()) return;
+		if (!ColoredLightEngine.isEnabled()) return;
 		
 		define(standardDefines, "COLORFUL_LIGHTING_MOD_PRESENT");
 	}

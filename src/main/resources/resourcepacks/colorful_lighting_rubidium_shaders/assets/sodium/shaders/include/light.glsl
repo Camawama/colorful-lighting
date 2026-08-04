@@ -11,18 +11,25 @@ vec4 _sample_colored_common(sampler2D lightMap, uint sl4, uint red8, uint green8
         _sample_lightmap_vanilla(lightMap, ivec2(int(blue8), 0)).r
     );
 
-    return vec4(sky + block * max(0.1, 1.0 - sky.r), 1.0);
+    float moonWashoutFactor = mix(1.0, 0.0, u_NightVibrancy);
+    float skyExposure = float(sl4) / 16.0;
+    float effectiveSkyBrightness = sky.r * moonWashoutFactor * skyExposure;
+    float washFactor = max(0.1, 1.0 - effectiveSkyBrightness);
+
+    block = mix(vec3(length(block)), block, washFactor * 0.25 + 0.75);
+
+    return vec4(sky + block * (max(0.1, 1.0 - sky.r) * 0.9 + 0.1), 1.0);
 }
 
 vec4 _sample_lightmap(sampler2D lightMap, ivec2 uv) {
     uint packed_light;
-    #ifdef USE_VERTEX_COMPRESSION
+//    #ifdef USE_VERTEX_COMPRESSION
     packed_light = (uint(uv.y) << 16) | uint(uv.x);
-    #else
-    // In non-compact mode, the 16-bit light data is split into two 8-bit values.
-    // We need to reconstruct the 16-bit value here.
-    packed_light = (uint(uv.y) << 8) | uint(uv.x);
-    #endif
+//    #else
+//    // In non-compact mode, the 16-bit light data is split into two 8-bit values.
+//    // We need to reconstruct the 16-bit value here.
+//    packed_light = (uint(uv.y) << 8) | uint(uv.x);
+//    #endif
 
     // Check for our magic number in the highest 4 bits.
     if (((packed_light >> 28) & 0xFu) == 0xFu) {
