@@ -12,11 +12,8 @@ import io.github.douira.glsl_transformer.ast.node.type.specifier.BuiltinNumericT
 import io.github.douira.glsl_transformer.ast.query.Root;
 import io.github.douira.glsl_transformer.ast.query.match.AutoHintedMatcher;
 import io.github.douira.glsl_transformer.ast.query.match.HintedMatcher;
-import io.github.douira.glsl_transformer.ast.transform.ASTInjectionPoint;
 import io.github.douira.glsl_transformer.ast.transform.ASTParser;
 import io.github.douira.glsl_transformer.parser.ParseShape;
-import kroppeb.stareval.expression.CallExpression;
-import me.erykczy.colorfullighting.compat.oculus.Resources;
 import net.irisshaders.iris.pipeline.transform.PatchShaderType;
 import net.irisshaders.iris.pipeline.transform.parameter.Parameters;
 

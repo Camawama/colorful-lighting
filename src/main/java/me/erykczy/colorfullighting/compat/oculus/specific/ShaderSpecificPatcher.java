@@ -9,7 +9,7 @@ import io.github.douira.glsl_transformer.ast.query.Root;
 import io.github.douira.glsl_transformer.ast.transform.ASTParser;
 import me.erykczy.colorfullighting.common.accessors.mixin.iris.CustomShaderProperties;
 import me.erykczy.colorfullighting.common.accessors.mixin.iris.ResolvedShaderPack;
-import me.erykczy.colorfullighting.compat.oculus.Resources;
+import me.erykczy.colorfullighting.compat.Resources;
 import me.erykczy.colorfullighting.mixin.compat.iris.ShaderPackAccessor;
 import net.irisshaders.iris.Iris;
 import net.irisshaders.iris.pipeline.transform.PatchShaderType;

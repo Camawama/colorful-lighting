@@ -30,6 +30,7 @@
     "compat.sodium.ShaderLoaderMixin",
     "compat.sodium.DefaultChunkRendererMixin",
     "compat.sodium.ShaderChunkRendererAccessor",
+	"compat.vanilla.ShaderInstanceMixin",
     "compat.starlight.StarlightInterfaceMixin",
     "compat.starlight.StarlightLevelLightEngineMixin",
     "ClientPacketListenerMixin",
@@ -62,5 +63,8 @@
   ],
   "injectors": {
     "defaultRequire": 1
+  },
+  "mixinextras": {
+    "minVersion": "0.5.4"
   }
 }

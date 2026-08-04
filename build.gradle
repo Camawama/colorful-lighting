@@ -4,7 +4,7 @@ plugins {
     id 'maven-publish'
     id 'net.minecraftforge.gradle' version '[6.0,6.2)'
     id 'org.spongepowered.mixin' version '0.7.+'
-    id 'com.github.johnrengelman.shadow' version '7.1.2'
+//    id 'com.github.johnrengelman.shadow' version '7.1.2'
 }
 
 version = mod_version
@@ -131,7 +131,7 @@ dependencies {
     runtimeOnly fg.deobf("curse.maven:wakes-reforged-1223529:7494279")
     runtimeOnly fg.deobf("curse.maven:lively-lighting-1485353:8382791")
     //runtimeOnly fg.deobf("curse.maven:dynamiclights-reforged-551736:6044481")
-    runtimeOnly fg.deobf("curse.maven:oculus-581495:6020952")
+    compileOnly fg.deobf("curse.maven:oculus-581495:6020952")
     runtimeOnly fg.deobf("curse.maven:architectury-api-419699:5137938")
     runtimeOnly fg.deobf("curse.maven:cubes-without-borders-975120:5855464")
     runtimeOnly fg.deobf("curse.maven:free-cam-557076:4643128")
@@ -155,7 +155,7 @@ dependencies {
     // Registrate (required by Create internally)
     implementation fg.deobf("com.tterrag.registrate:Registrate:${registrate_version}")
 
-    runtimeOnly "curse.maven:euphoria-patches-915902:8177591"
+    compileOnly "curse.maven:euphoria-patches-915902:8177591"
 }
 
 tasks.named('processResources', ProcessResources).configure {
