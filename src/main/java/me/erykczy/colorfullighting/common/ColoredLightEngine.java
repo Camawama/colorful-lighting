@@ -224,7 +224,12 @@ public class ColoredLightEngine {
 		synchronized (TRACKED) {
 			TRACKED.remove(this);
 		}
-		((LevelAttachments) level).colorfullighting$getFlywheelCompat().getStorage().delete();
+		
+		if (FlywheelCompat.isAvailable()) {
+			FlywheelCompat compat = ((LevelAttachments) level).colorfullighting$getFlywheelCompat();
+			if (compat != null)
+				compat.getStorage().delete();
+		}
 	}
 	
 	public LevelAccessor getLevel() {

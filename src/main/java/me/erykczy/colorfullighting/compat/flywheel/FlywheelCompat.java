@@ -24,7 +24,7 @@ public class FlywheelCompat {
      * engine-wide refresh paths (toggle, dirty sections) and '/cl flywheel report'. Render thread
      * only, like everything else in this compat.
      */
-    private static ColoredLightFlywheelStorage placeholder = new ColoredLightFlywheelStorage(null);
+    private static ColoredLightFlywheelStorage placeholder;
     private ColoredLightFlywheelStorage storage;
 
     public static void init() {
@@ -42,18 +42,24 @@ public class FlywheelCompat {
             return;
         }
         RenderSystem.recordRenderCall(() -> {
-            // Flywheel stamps "#version MAX_GLSL_VERSION" into every shader it compiles, and
-            // colored_light.glsl switches on __VERSION__ >= 430 between the SSBO and the
-            // buffer-texture fallback — so deciding from the same value keeps the Java side and
-            // the shaders in lockstep. Below GLSL 430 only the instancing backend can run
-            // (indirect needs GL 4.6), and buffer textures are core since GL 3.1, below
-            // flywheel's own minimum.
-            textureFallback = GlCompat.MAX_GLSL_VERSION.compareTo(GlslVersion.V430) < 0;
-            // logged unconditionally: any log file must answer "which transport actually ran"
-            ColorfulLighting.LOGGER.info("Flywheel colored light mode: {} (flywheel GLSL {})",
-                    textureFallback ? "buffer texture" : "SSBO", GlCompat.MAX_GLSL_VERSION);
+	        isAvailable = net.minecraftforge.fml.ModList.get().isLoaded("flywheel");
 			
-			isAvailable = net.minecraftforge.fml.ModList.get().isLoaded("flywheel");
+			if (isAvailable) {
+				// Flywheel stamps "#version MAX_GLSL_VERSION" into every shader it compiles, and
+				// colored_light.glsl switches on __VERSION__ >= 430 between the SSBO and the
+				// buffer-texture fallback — so deciding from the same value keeps the Java side and
+				// the shaders in lockstep. Below GLSL 430 only the instancing backend can run
+				// (indirect needs GL 4.6), and buffer textures are core since GL 3.1, below
+				// flywheel's own minimum.
+				textureFallback = FlwIndirect.checkVersion();
+				// logged unconditionally: any log file must answer "which transport actually ran"
+				ColorfulLighting.LOGGER.info("Flywheel colored light mode: {} (flywheel GLSL {})",
+						textureFallback ? "buffer texture" : "SSBO", GlCompat.MAX_GLSL_VERSION);
+				
+				placeholder = new ColoredLightFlywheelStorage(null);
+			} else {
+				textureFallback = true;
+			}
         });
     }
 
