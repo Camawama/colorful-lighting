@@ -2,9 +2,12 @@ package me.erykczy.colorfullighting.mixin.compat.flywheel;
 
 import dev.engine_room.flywheel.backend.engine.LightStorage;
 import dev.engine_room.flywheel.backend.engine.indirect.StagingBuffer;
+import me.erykczy.colorfullighting.common.accessors.mixin.LevelAttachments;
 import me.erykczy.colorfullighting.compat.flywheel.ColoredLightFlywheelStorage;
 import me.erykczy.colorfullighting.compat.flywheel.ColoredLightStorageHolder;
 import me.erykczy.colorfullighting.compat.flywheel.FlywheelCompat;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LevelAccessor;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
@@ -36,7 +39,12 @@ public class LightStorageMixin implements ColoredLightStorageHolder {
     @Inject(method = "<init>", at = @At("TAIL"))
     private void colorfullighting$init(CallbackInfo ci) {
         if (FlywheelCompat.isAvailable()) {
-            colorfullighting$storage = new ColoredLightFlywheelStorage(((LightStorage) (Object) this).level());
+	        LevelAccessor lvl = ((LightStorage) (Object) this).level();
+			FlywheelCompat compat = ((LevelAttachments) lvl).colorfullighting$getFlywheelCompat();
+			if (compat == null) return;
+			ColoredLightFlywheelStorage strg = new ColoredLightFlywheelStorage(lvl);
+	        compat.setStorage(strg);
+            colorfullighting$storage = strg;
         }
     }
 

@@ -6,10 +6,6 @@ import dev.engine_room.flywheel.backend.glsl.GlslVersion;
 import me.erykczy.colorfullighting.ColorfulLighting;
 import me.erykczy.colorfullighting.common.ColoredLightEngine;
 import me.erykczy.colorfullighting.common.accessors.mixin.LevelAttachments;
-import net.minecraft.world.level.LevelAccessor;
-
-import java.util.ArrayList;
-import java.util.List;
 
 public class FlywheelCompat {
 	private static boolean isAvailable = false;
@@ -28,7 +24,8 @@ public class FlywheelCompat {
      * engine-wide refresh paths (toggle, dirty sections) and '/cl flywheel report'. Render thread
      * only, like everything else in this compat.
      */
-    private final ColoredLightFlywheelStorage storage;
+    private static ColoredLightFlywheelStorage placeholder = new ColoredLightFlywheelStorage(null);
+    private ColoredLightFlywheelStorage storage;
 
     public static void init() {
         // Probe the Flywheel 1.0 API before ColoredLightFlywheelStorage (which references it in
@@ -115,10 +112,16 @@ public class FlywheelCompat {
     }
 
     public FlywheelCompat() {
-        storage = new ColoredLightFlywheelStorage(null);
+        storage = null;
     }
 	
 	public ColoredLightFlywheelStorage getStorage() {
-		return storage;
+		return storage == null ? placeholder : storage;
+	}
+	
+	public void setStorage(ColoredLightFlywheelStorage strg) {
+		if (storage != null && !storage.isDeleted())
+			throw new RuntimeException("Replacing non-deleted light storage.");
+		storage = strg;
 	}
 }

@@ -108,14 +108,6 @@ public class ColoredLightFlywheelStorage {
         return arena.capacity();
     }
 
-    /**
-     * Whether this storage belongs to the given level. Identity: flywheel hands its LightStorage
-     * the ClientLevel itself, and the engine's dirty-section refresh passes the same instance.
-     */
-    public boolean isForLevel(LevelAccessor level) {
-        return this.level == level;
-    }
-
     public void delete() {
         if (deleted) return;
         arena.delete();
@@ -138,6 +130,7 @@ public class ColoredLightFlywheelStorage {
     }
 
     private int indexForSection(long section) {
+	    if (level == null) return 0;
         int out = section2ArenaIndex.get(section);
 
         // Need to allocate.
@@ -149,6 +142,7 @@ public class ColoredLightFlywheelStorage {
     }
 
     public void removeSection(long section) {
+	    if (level == null) return;
         if (deleted) return;
         int index = section2ArenaIndex.remove(section);
         if (index != INVALID_SECTION) {
@@ -157,6 +151,7 @@ public class ColoredLightFlywheelStorage {
     }
 
     public void collectSection(long section) {
+	    if (level == null) return;
         if (deleted) return;
         int index = indexForSection(section);
 
@@ -171,6 +166,7 @@ public class ColoredLightFlywheelStorage {
     }
 
     public void recollectSectionIfTracked(long section) {
+	    if (level == null) return;
         if (deleted) return;
         if (!section2ArenaIndex.containsKey(section)) return;
         collectSection(section);
@@ -182,6 +178,7 @@ public class ColoredLightFlywheelStorage {
      * buffers would keep the last collected colored light forever after a disable.
      */
     public void recollectAllTracked() {
+	    if (level == null) return;
         if (deleted) return;
         for (long section : section2ArenaIndex.keySet().toLongArray()) {
             collectSection(section);
@@ -193,6 +190,7 @@ public class ColoredLightFlywheelStorage {
      * data store, so every section is marked changed to be re-uploaded from the CPU arena.
      */
     private void ensureSsboCapacity() {
+	    if (level == null) return;
         long needed = (long) capacity() * SECTION_SIZE_BYTES;
         if (ssboHandle != 0 && needed <= ssboByteCapacity) return;
 
@@ -207,6 +205,7 @@ public class ColoredLightFlywheelStorage {
     }
 
     public void uploadChangedSections(StagingBuffer staging) {
+	    if (level == null) return;
         if (deleted) return;
         ensureSsboCapacity();
         for (int i = changed.nextSetBit(0); i >= 0; i = changed.nextSetBit(i + 1)) {
@@ -222,6 +221,7 @@ public class ColoredLightFlywheelStorage {
      * which always holds all the data.
      */
     public void uploadChangedSectionsDirect() {
+	    if (level == null) return;
         if (deleted) return;
         if (changed.isEmpty()) return;
 
@@ -258,7 +258,7 @@ public class ColoredLightFlywheelStorage {
     }
 
     public void bindBuffers() {
-        if (deleted) return;
+	    if (deleted) return;
         if (fallbackTexture != null) {
             // mirrors InstancedLight.bind: tracked active-texture switch, re-attach every bind
             GlTextureUnit.T10.makeActive();
@@ -316,4 +316,8 @@ public class ColoredLightFlywheelStorage {
         if (level instanceof Level realLevel) return realLevel.dimension().location().toString();
         return level.getClass().getSimpleName();
     }
+	
+	public boolean isDeleted() {
+		return deleted;
+	}
 }
