@@ -1,5 +1,6 @@
 package me.erykczy.colorfullighting.mixin.compat.starlight;
 
+import me.erykczy.colorfullighting.common.ColoredLightEngine;
 import me.erykczy.colorfullighting.common.accessors.mixin.LevelAttachments;
 import me.erykczy.colorfullighting.common.accessors.mixin.LightEngineAccessor;
 import net.minecraft.client.Minecraft;
@@ -26,6 +27,10 @@ public class StarlightInterfaceMixin {
     private void colorfullighting$blockChange(BlockPos pos, CallbackInfoReturnable<?> cir) {
         if (!Minecraft.getInstance().isSameThread()) return; // only client side
 	    LightChunkGetter getter = ((LightEngineAccessor) lightEngine).colorfullighting$getChunkGetter();
-        ((LevelAttachments) getter.getLevel()).colorfullighting$getEngine().onBlockLightPropertiesChanged(pos);
+        // virtual levels (e.g. Create's VirtualRenderWorld) have no colored light engine
+        if (!(getter.getLevel() instanceof LevelAttachments attachments)) return;
+        ColoredLightEngine engine = attachments.colorfullighting$getEngine();
+        if (engine == null) return;
+        engine.onBlockLightPropertiesChanged(pos);
     }
 }
