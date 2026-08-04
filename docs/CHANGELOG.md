@@ -6,6 +6,11 @@ Planned
 - keep Valkyrien Skies compatibility on every version where VS exists
 - add Sable / Create Aeronautics compatibility alongside Valkyrien Skies where possible
 
+2026-08-04
+- fixed dark held and dropped items with Flerovium installed
+- fixed dark block-breaking cracks overlay with Flerovium installed
+- fixed dark particles with AsyncParticles installed
+
 2026-07-14
 - fixed crash when riding boats with the Wakes mod installed
 - added support for OpenGL 4.3 and lower (Flywheel compat no longer requires GL 4.5+)

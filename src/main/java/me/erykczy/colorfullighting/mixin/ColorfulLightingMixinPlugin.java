@@ -62,6 +62,14 @@ public class ColorfulLightingMixinPlugin implements IMixinConfigPlugin {
             // Ensure Create 0.6+ is installed before applying create mixins
             return hasClass("net.createmod.catnip.render.ShadeSeparatingSuperByteBuffer");
         }
+        if (mixinClassName.contains(".flerovium.")) {
+            // Ensure Flerovium is installed before applying flerovium compat mixins
+            return hasClass("com.moepus.flerovium.functions.FastSimpleBakedModelRenderer");
+        }
+        if (mixinClassName.contains(".asyncparticles.")) {
+            // Ensure AsyncParticles is installed before applying its compat mixin
+            return hasClass("fun.qu_an.minecraft.asyncparticles.client.addon.LightCachedParticleAddon");
+        }
         if (mixinClassName.contains(".dynamiclights.")) {
             // Ensure SodiumDynamicLights (DynamicLights Reforged) is installed
             return hasClass("toni.sodiumdynamiclights.SodiumDynamicLights");

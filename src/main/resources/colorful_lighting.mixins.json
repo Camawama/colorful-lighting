@@ -58,7 +58,11 @@
 	"ClientLevelMixin",
 	"render.RenderChunkRegionMixin",
 	"compat.sodium.sodium.FlatLightPipelineMixin",
-	"compat.sodium.sodium.SodiumSmoothLightPipelineMixin"
+	"compat.sodium.sodium.SodiumSmoothLightPipelineMixin",
+	"compat.flerovium.FastSimpleBakedModelRendererMixin",
+	"compat.flerovium.BlockBreakingDecalGeneratorMixin",
+	"compat.flerovium.BlockBreakingDecalGeneratorIrisMixin",
+	"compat.asyncparticles.AsyncParticlesLightCacheMixin"
   ],
   "injectors": {
     "defaultRequire": 1
