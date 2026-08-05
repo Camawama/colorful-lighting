@@ -44,6 +44,20 @@ public class InternalPackRegistration {
 				Component.literal("Colorful Lighting Core Shaders"),
 				false
 		));
+		if (ModList.get().isLoaded("hbm_m")) {
+			if (hbmShadersMatchReference()) {
+				registerPacks.add(makePack(
+						ResourceLocation.parse("colorful_lighting:colorful_lighting_hbm_shaders"),
+						Component.literal("Colorful Lighting HBM Shaders"),
+						false
+				));
+				me.erykczy.colorfullighting.compat.hbm.HbmCompat.setShaderOverrideActive(true);
+				ColorfulLighting.LOGGER.info("HBM Modernized block_lit shaders match the known version; colored machine lighting enabled");
+			} else {
+				ColorfulLighting.LOGGER.info(
+						"HBM Modernized ships unknown block_lit shaders (mod updated?); machines get correct brightness but no colored light");
+			}
+		}
 		if (ModList.get().isLoaded("embeddium")) {
 			registerPacks.add(makePack(
 					ResourceLocation.parse("colorful_lighting:colorful_lighting_embeddium_shaders"),
@@ -153,6 +167,43 @@ public class InternalPackRegistration {
 
     private static boolean fileExists(IModInfo info, String path) {
         return Files.exists(info.getOwningFile().getFile().findResource(path.split("/")));
+    }
+
+    /**
+     * The HBM shader override pack replaces HBM's block_lit shaders with copies extended to
+     * decode colored light, so it may only load when the installed HBM ships exactly the shaders
+     * the copies were derived from. On any mismatch (HBM updated its renderer) the pack stays
+     * unregistered and no colored samples are encoded — machines keep correct brightness.
+     */
+    private static boolean hbmShadersMatchReference() {
+        try {
+            Path shaderDir = ModList.get().getModFileById("hbm_m").getFile()
+                    .findResource("assets", "hbm_m", "shaders", "core");
+            return resourceMatches(shaderDir.resolve("block_lit.vsh"), "/internal/hbm_reference_block_lit.vsh")
+                    && resourceMatches(shaderDir.resolve("block_lit.fsh"), "/internal/hbm_reference_block_lit.fsh");
+        } catch (Exception e) {
+            ColorfulLighting.LOGGER.warn("Could not inspect HBM Modernized's shaders", e);
+            return false;
+        }
+    }
+
+    private static boolean resourceMatches(Path installed, String referenceClasspath) throws java.io.IOException {
+        if (!Files.exists(installed)) return false;
+        try (var stream = ColorfulLighting.class.getResourceAsStream(referenceClasspath)) {
+            if (stream == null) return false;
+            String reference = new String(stream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            String actual = Files.readString(installed, java.nio.charset.StandardCharsets.UTF_8);
+            return normalizeShader(actual).equals(normalizeShader(reference));
+        }
+    }
+
+    /** Line-ending and trailing-whitespace tolerant comparison; the GLSL itself must be identical. */
+    private static String normalizeShader(String source) {
+        StringBuilder result = new StringBuilder(source.length());
+        for (String line : source.split("\n", -1)) {
+            result.append(line.replace("\r", "").stripTrailing()).append('\n');
+        }
+        return result.toString().strip();
     }
 
     private static IModFileInfo getPackInfo(ResourceLocation pack) {

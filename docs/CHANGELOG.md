@@ -9,6 +9,7 @@ Planned
 2026-08-05
 - fixed dark Epic Fight mobs (zombies, skeletons, players and other patched models)
 - fixed striped light glitches on HBM Modernized machines
+- added full colored lighting on HBM Modernized machines (auto-disables if a future HBM update changes its shaders, falling back to plain correct brightness)
 - fixed dark fluid inside the Flopper mod's floppers
 - added automatic light colors sampled from block textures for modded light sources (autoEmitterColors config, on by default)
 - added "auto" color option in emitters.json for blocks that change color by position (e.g. Better End aurora crystals)
