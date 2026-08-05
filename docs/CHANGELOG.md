@@ -9,7 +9,9 @@ Planned
 2026-08-05
 - fixed crash on world join when Distant Horizons is not installed
 - fixed pitch-black terrain with Nvidium/Acedium installed
-- added colored terrain lighting under Nvidium/Acedium (hue fades to vanilla on sky-lit faces)
+- added colored terrain lighting under Nvidium/Acedium (hue fades slightly to vanilla on sky-lit faces)
+- fixed skylight washing out colored terrain light way too much under Nvidium/Acedium
+- fixed colored light under Nvidium/Acedium tinting its whole light field at full saturation instead of fading to darkness with distance
 - fixed dark Epic Fight mobs (zombies, skeletons, players and other patched models)
 - fixed striped light glitches on HBM Modernized machines
 - added full colored lighting on HBM Modernized machines (auto-disables if a future HBM update changes its shaders, falling back to plain correct brightness)
