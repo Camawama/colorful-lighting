@@ -804,6 +804,10 @@ public class LightPropagator implements Runnable {
         boolean sourceOccludes = sourceStateExists && sourceBlockState.useShapeForLightOcclusion();
         boolean sourceDynamic = sourceStateExists && ShapeOcclusion.isDynamicShapeBlocker(sourceBlockState);
         ColorRGB4 sourceBaseTransmittance = sourceStateExists ? Config.getColoredLightTransmittance(level, request.blockPos, sourceState) : ColorRGB4.WHITE;
+        // Multiplicative filters (e.g. water) tint once on entry into each filtering block;
+        // the exit face must not clamp or the tint would double-apply at every interior face.
+        boolean sourceMultiplies = sourceStateExists && !sourceBaseTransmittance.equals(ColorRGB4.WHITE)
+                && Config.isMultiplyFilter(level, request.blockPos, sourceState);
 
         for(var direction : Direction.values()) {
             BlockPos neighbourPos = request.blockPos.relative(direction);
@@ -862,6 +866,8 @@ public class LightPropagator implements Runnable {
             ColorRGB4 exitTransmittance;
             if (sourceDynamic) {
                 exitTransmittance = sourcePanelBlocks ? sourceBaseTransmittance : ColorRGB4.WHITE;
+            } else if (sourceMultiplies) {
+                exitTransmittance = ColorRGB4.WHITE; // tint was already applied entering this block
             } else if (!sourceBaseTransmittance.equals(ColorRGB4.WHITE)) {
                 exitTransmittance = Config.getColoredLightTransmittance(level, request.blockPos, sourceState, direction);
             } else {
@@ -873,15 +879,20 @@ public class LightPropagator implements Runnable {
             } else {
                 entryTransmittance = Config.getColoredLightTransmittance(level, neighbourPos, neighbourState, direction.getOpposite());
             }
-            
-            ColorRGB4 coloredLightTransmittance = ColorRGB4.min(exitTransmittance, entryTransmittance);
-            
+            boolean entryMultiplies = !neighbourDynamic && !entryTransmittance.equals(ColorRGB4.WHITE)
+                    && Config.isMultiplyFilter(level, neighbourPos, neighbourState);
+
+            ColorRGB4 coloredLightTransmittance = ColorRGB4.min(exitTransmittance, entryMultiplies ? ColorRGB4.WHITE : entryTransmittance);
+
             ColorRGB4 attenuated = attenuateLight(request.lightColor, lightBlocked);
             ColorRGB4 neighbourLightColor = ColorRGB4.fromRGB4(
                     MathExt.clamp(attenuated.red4, 0, coloredLightTransmittance.red4),
                     MathExt.clamp(attenuated.green4, 0, coloredLightTransmittance.green4),
                     MathExt.clamp(attenuated.blue4, 0, coloredLightTransmittance.blue4)
             );
+            if (entryMultiplies) {
+                neighbourLightColor = ColorRGB4.mul(neighbourLightColor, entryTransmittance);
+            }
             // if no more color to propagate
             if(neighbourLightColor.red4 == 0 && neighbourLightColor.green4 == 0 && neighbourLightColor.blue4 == 0) continue;
 

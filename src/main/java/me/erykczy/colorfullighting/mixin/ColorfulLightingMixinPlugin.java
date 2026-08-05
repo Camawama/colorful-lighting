@@ -74,6 +74,18 @@ public class ColorfulLightingMixinPlugin implements IMixinConfigPlugin {
             // Ensure SodiumDynamicLights (DynamicLights Reforged) is installed
             return hasClass("toni.sodiumdynamiclights.SodiumDynamicLights");
         }
+        if (mixinClassName.contains(".epicfight.")) {
+            // Ensure Epic Fight is installed before applying its compat mixin
+            return hasClass("yesman.epicfight.client.renderer.patched.entity.PatchedLivingEntityRenderer");
+        }
+        if (mixinClassName.contains(".flopper.")) {
+            // Ensure Flopper is installed before applying its compat mixin
+            return hasClass("org.cyclops.flopper.client.render.blockentity.RenderBlockEntityFlopper");
+        }
+        if (mixinClassName.contains(".hbm.")) {
+            // Ensure HBM Modernized is installed before applying its compat mixins
+            return hasClass("com.hbm_m.client.render.LightSampleCache");
+        }
         if (mixinClassName.contains(".embeddium.")) {
             // Ensure SPECIFICALLY embeddium is installed
             return hasClass("org.embeddedt.embeddium_integrity.MixinTaintDetector");

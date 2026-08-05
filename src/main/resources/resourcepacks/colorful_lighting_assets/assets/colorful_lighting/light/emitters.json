@@ -242,5 +242,8 @@
 	"minecraft:soul_wall_torch": "#36d9e6",
 	"minecraft:torch": "vanilla",
 	"minecraft:wall_torch": "vanilla",
-	"minecraft:crying_obsidian": "#9800ba"
+	"minecraft:crying_obsidian": "#9800ba",
+
+	"betterend:aurora_crystal": "auto",
+	"betterendforge:aurora_crystal": "auto"
 }

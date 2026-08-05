@@ -84,6 +84,9 @@ public class ConfigResourceManager implements ResourceManagerReloadListener {
         Config.setItemEmitters(itemEmitters);
         Config.setMoonPhases(moonPhases);
 
+        // texture atlas and models were rebuilt; sampled emitter colors must be re-derived
+        me.erykczy.colorfullighting.common.AutoEmitterColors.clearCache();
+
         // which block entities need NBT snapshots depends on the configs that just changed, and the
         // snapshots must be in place before the engine starts re-propagating light below
         var level = ColorfulLighting.clientAccessor.getLevel();
@@ -138,10 +141,19 @@ public class ConfigResourceManager implements ResourceManagerReloadListener {
         }
     }
 
+    /**
+     * Entries for blocks from mods that are not installed are expected (the built-in config ships
+     * optional-mod entries) — skip them quietly instead of warning on every reload.
+     */
+    private static boolean missingOptionalBlock(ResourceLocation key) {
+        return key != null && !"minecraft".equals(key.getNamespace()) && !BuiltInRegistries.BLOCK.containsKey(key);
+    }
+
     private static void processEmitterEntries(JsonObject object, String sourcePackId, HashMap<ResourceLocation, VariantList<Config.ColorEmitter>> emitters) {
         for (var entry : object.entrySet()) {
             try {
                 var key = ResourceLocation.tryParse(entry.getKey());
+                if(missingOptionalBlock(key)) continue;
                 if(!BuiltInRegistries.BLOCK.containsKey(key)) throw new IllegalArgumentException("Couldn't find block "+key);
                 emitters.put(key, VariantList.fromJsonElement(entry.getValue(), Config.ColorEmitter::fromJsonElement));
             }
@@ -155,6 +167,7 @@ public class ConfigResourceManager implements ResourceManagerReloadListener {
         for (var entry : object.entrySet()) {
             try {
                 var key = ResourceLocation.tryParse(entry.getKey());
+                if(missingOptionalBlock(key)) continue;
                 if(!BuiltInRegistries.BLOCK.containsKey(key)) throw new IllegalArgumentException("Couldn't find block "+key);
                 filters.put(key, VariantList.fromJsonElement(entry.getValue(), Config.ColorFilter::fromJsonElement));
             }
@@ -168,6 +181,7 @@ public class ConfigResourceManager implements ResourceManagerReloadListener {
         for (var entry : object.entrySet()) {
             try {
                 var key = ResourceLocation.tryParse(entry.getKey());
+                if(missingOptionalBlock(key)) continue;
                 if(!BuiltInRegistries.BLOCK.containsKey(key)) throw new IllegalArgumentException("Couldn't find block "+key);
                 absorbers.put(key, VariantList.fromJsonElement(entry.getValue(), Config.ColorEmitter::fromJsonElement));
             }

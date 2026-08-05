@@ -6,6 +6,16 @@ Planned
 - keep Valkyrien Skies compatibility on every version where VS exists
 - add Sable / Create Aeronautics compatibility alongside Valkyrien Skies where possible
 
+2026-08-05
+- fixed dark Epic Fight mobs (zombies, skeletons, players and other patched models)
+- fixed striped light glitches on HBM Modernized machines
+- fixed dark fluid inside the Flopper mod's floppers
+- added automatic light colors sampled from block textures for modded light sources (autoEmitterColors config, on by default)
+- added "auto" color option in emitters.json for blocks that change color by position (e.g. Better End aurora crystals)
+- made water light filtering more realistic: subtle per-block tint that deepens with distance
+- added biome-tinted water filtering: swamp water filters light differently than ocean water
+- added "multiply" filter mode and "biome_water" color in filters.json
+
 2026-08-04
 - fixed dark held and dropped items with Flerovium installed
 - fixed dark block-breaking cracks overlay with Flerovium installed

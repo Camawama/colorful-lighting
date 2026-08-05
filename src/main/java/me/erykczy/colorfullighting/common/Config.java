@@ -5,6 +5,7 @@ import me.erykczy.colorfullighting.common.accessors.BlockStateAccessor;
 import me.erykczy.colorfullighting.common.accessors.LevelAccessor;
 import me.erykczy.colorfullighting.common.accessors.mixin.LevelAttachments;
 import me.erykczy.colorfullighting.common.config.VariantList;
+import me.erykczy.colorfullighting.common.util.BiomeTint;
 import me.erykczy.colorfullighting.common.util.ColorRGB4;
 import me.erykczy.colorfullighting.common.util.JsonHelper;
 import me.erykczy.colorfullighting.compat.dynamiclights.DynamicLightsCompat;
@@ -134,8 +135,15 @@ public class Config {
         if(config != null) {
             ColorEmitter emitter = config.resolve(blockState, nbtFor(level, config, pos));
             if (emitter != null) {
-                return emitter.color().mul(emitter.overriddenBrightness4 < 0 ? lightEmission : emitter.overriddenBrightness4 / 15.0f);
+                ColorRGB4 color = emitter.autoColor
+                        ? AutoEmitterColors.get(blockState.getBlockState(), level.getLevel(), pos)
+                        : emitter.color();
+                return color.mul(emitter.overriddenBrightness4 < 0 ? lightEmission : emitter.overriddenBrightness4 / 15.0f);
             }
+        }
+        // unconfigured light source (typically modded): derive the color from its texture
+        if (lightEmission > 0 && ColorfulLightingConfig.autoEmitterColors()) {
+            return AutoEmitterColors.get(blockState.getBlockState(), level.getLevel(), pos).mul(lightEmission);
         }
         return defaultColor.mul(lightEmission);
     }
@@ -193,10 +201,19 @@ public class Config {
 
 	@Deprecated
     public static ColorRGB4 getLightColor(@NotNull BlockStateAccessor blockState) {
-        return getLightColor(blockState.getBlock());
+        return getLightColor(blockState.getBlockState());
     }
+    /** Position-less lookup used by the block renderers; auto colors resolve untinted here. */
     public static ColorRGB4 getLightColor(@NotNull BlockState blockState) {
-        return getLightColor(blockState.getBlock());
+        VariantList<ColorEmitter> config = colorEmitters.get(blockState.getBlock());
+        if(config != null && config.getDefault() != null) {
+            ColorEmitter emitter = config.getDefault();
+            return emitter.autoColor ? AutoEmitterColors.get(blockState, null, null) : emitter.color();
+        }
+        if (blockState.getLightEmission() > 0 && ColorfulLightingConfig.autoEmitterColors()) {
+            return AutoEmitterColors.get(blockState, null, null);
+        }
+        return defaultColor;
     }
     public static ColorRGB4 getLightColor(@Nullable Block block) {
         if(block != null) {
@@ -213,9 +230,24 @@ public class Config {
     }
     public static ColorRGB4 getColoredLightTransmittance(@NotNull LevelAccessor level, BlockPos pos, @NotNull BlockStateAccessor blockState) {
         VariantList<ColorFilter> config = colorFilters.get(blockState.getBlock());
-        if(config == null) return ColorRGB4.fromRGB4(15, 15, 15);
+        if(config == null) return ColorRGB4.WHITE;
         ColorFilter filter = config.resolve(blockState, nbtFor(level, config, pos));
-        return filter != null ? filter.transmittance : ColorRGB4.fromRGB4(15, 15, 15);
+        if(filter == null) return ColorRGB4.WHITE;
+        if(!filter.biomeWater) return filter.transmittance;
+        ColorRGB4 color = BiomeTint.waterColor(level, pos, filter.transmittance);
+        return filter.strength < 1.0f ? ColorRGB4.towardWhite(color, filter.strength) : color;
+    }
+
+    /**
+     * Whether the filter at this block applies its color multiplicatively (per block crossed)
+     * instead of as a ceiling clamp; the propagator uses this to pick how to apply the color
+     * returned by {@link #getColoredLightTransmittance}.
+     */
+    public static boolean isMultiplyFilter(@NotNull LevelAccessor level, BlockPos pos, @NotNull BlockStateAccessor blockState) {
+        VariantList<ColorFilter> config = colorFilters.get(blockState.getBlock());
+        if(config == null) return false;
+        ColorFilter filter = config.resolve(blockState, nbtFor(level, config, pos));
+        return filter != null && filter.multiply;
     }
 
     public static ColorRGB4 getColoredLightTransmittance(@NotNull LevelAccessor level, BlockPos pos, @NotNull BlockStateAccessor blockState, Direction direction) {
@@ -313,9 +345,20 @@ public class Config {
     /**
      * @param color light color
      * @param overriddenBrightness4 4 bit value in range 0..15, by which light color is multiplied, if -1, vanilla emission for given block is used
+     * @param autoColor when true the color is sampled from the block's texture (and position tint)
+     *                  at lookup time via {@link AutoEmitterColors}; {@code color} is only a fallback
      */
-    public record ColorEmitter(ColorRGB4 color, int overriddenBrightness4) {
+    public record ColorEmitter(ColorRGB4 color, int overriddenBrightness4, boolean autoColor) {
+        public ColorEmitter(ColorRGB4 color, int overriddenBrightness4) {
+            this(color, overriddenBrightness4, false);
+        }
+
         public static ColorEmitter fromJsonElement(JsonElement value) throws IllegalArgumentException {
+            if (!value.isJsonArray() && value.getAsString().split(";")[0].trim().equalsIgnoreCase("auto")) {
+                Integer brightness = getBrightnessFromJsonElement(value);
+                if(brightness == null) throw new IllegalArgumentException("Invalid brightness.");
+                return new ColorEmitter(defaultColor, brightness, true);
+            }
             ColorRGB4 color = getColorFromJsonElement(value);
             Integer brightness = getBrightnessFromJsonElement(value);
             if(color == null) throw new IllegalArgumentException("Invalid color.");
@@ -356,12 +399,61 @@ public class Config {
             return null;
         }
     }
-    public record ColorFilter(ColorRGB4 transmittance, int absorption) {
+    /**
+     * @param transmittance filter color; for {@code biomeWater} filters this is only the fallback
+     *                      when the biome cannot be resolved. Static colors are pre-blended toward
+     *                      white by {@code strength} at parse time.
+     * @param absorption    light level lost per block crossed, -1 = use the vanilla value
+     * @param multiply      apply the color as a per-block multiplicative tint (Beer-Lambert style,
+     *                      deepens with distance) instead of the legacy per-channel ceiling clamp
+     * @param biomeWater    resolve the color from the biome's water color at the filtering block
+     * @param strength      0..1 blend of the (biome) color toward white, applied at lookup time for
+     *                      biome colors; 1 = full color
+     *
+     * <p>String syntax: {@code "<color|biome_water>[;<absorption>[;<multiply|clamp>[;<strength>]]]"},
+     * e.g. {@code "biome_water;1;multiply;0.5"}. The array form {@code [r, g, b, absorption]} keeps
+     * its legacy clamp behavior.
+     */
+    public record ColorFilter(ColorRGB4 transmittance, int absorption, boolean multiply, boolean biomeWater, float strength) {
+        /** Fallback water color when the biome is unavailable (vanilla ocean water, normalized). */
+        private static final ColorRGB4 WATER_FALLBACK = ColorRGB4.fromRGB8(70, 131, 255);
+
+        public ColorFilter(ColorRGB4 transmittance, int absorption) {
+            this(transmittance, absorption, false, false, 1.0f);
+        }
+
         public static ColorFilter fromJsonElement(JsonElement value) throws IllegalArgumentException {
-            ColorRGB4 color = getColorFromJsonElement(value);
-            Integer absorption = getAbsorptionFromJsonElement(value);
+            if (value.isJsonArray()) {
+                ColorRGB4 color = getColorFromJsonElement(value);
+                Integer absorption = getAbsorptionFromJsonElement(value);
+                if(color == null) throw new IllegalArgumentException("Invalid color.");
+                return new ColorFilter(color, absorption != null ? absorption : -1);
+            }
+
+            String[] args = value.getAsString().split(";");
+            String colorArg = args[0].trim();
+            boolean biomeWater = colorArg.equalsIgnoreCase("biome_water");
+            ColorRGB4 color = biomeWater ? WATER_FALLBACK : JsonHelper.getColor4FromString(colorArg);
             if(color == null) throw new IllegalArgumentException("Invalid color.");
-            return new ColorFilter(color, absorption != null ? absorption : -1);
+            Integer absorption = getAbsorptionFromJsonElement(value);
+
+            boolean multiply = false;
+            float strength = 1.0f;
+            for (int i = 2; i < args.length; i++) {
+                String arg = args[i].trim();
+                if (arg.equalsIgnoreCase("multiply")) multiply = true;
+                else if (arg.equalsIgnoreCase("clamp")) multiply = false;
+                else {
+                    try {
+                        strength = Math.max(0.0f, Math.min(1.0f, Float.parseFloat(arg)));
+                    } catch (NumberFormatException e) {
+                        throw new IllegalArgumentException("Unknown filter option: " + arg);
+                    }
+                }
+            }
+            // static colors can be softened once here; biome colors blend at lookup time
+            if (!biomeWater && strength < 1.0f) color = ColorRGB4.towardWhite(color, strength);
+            return new ColorFilter(color, absorption != null ? absorption : -1, multiply, biomeWater, strength);
         }
 
         private static ColorRGB4 getColorFromJsonElement(JsonElement value) {

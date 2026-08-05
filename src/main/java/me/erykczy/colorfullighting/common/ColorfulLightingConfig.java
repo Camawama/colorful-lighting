@@ -46,6 +46,7 @@ public class ColorfulLightingConfig {
     public static final ForgeConfigSpec.BooleanValue AUTO_PATCH_SHADERPACKS;
     public static final ForgeConfigSpec.EnumValue<LightUpdateSpeed> LIGHT_UPDATE_SPEED;
     public static final ForgeConfigSpec.BooleanValue FLYWHEEL_FORCE_TEXTURE_MODE;
+    public static final ForgeConfigSpec.BooleanValue AUTO_EMITTER_COLORS;
 
     public static final ForgeConfigSpec SPEC;
 
@@ -62,6 +63,14 @@ public class ColorfulLightingConfig {
         AUTO_PATCH_SHADERPACKS = BUILDER
                 .comment("Automatically create '<Pack> + ColorfulLighting' copies of shaderpacks that decode colored lighting (requires Oculus)")
                 .define("autoPatchShaderpacks", false);
+        AUTO_EMITTER_COLORS = BUILDER
+                .comment(
+                        "Automatically derive a light color from a block's texture for light sources that have",
+                        "no configured color (typically modded blocks). Bright texture pixels dominate the sample,",
+                        "so a lamp glows in the color of its glowing part rather than its casing. Blocks whose",
+                        "color depends on position (via a block color provider) are tinted per position.",
+                        "Disable to make unconfigured light sources emit plain white light as before.")
+                .define("autoEmitterColors", true);
         LIGHT_UPDATE_SPEED = BUILDER
                 .comment(
                         "How quickly colored light fills in after chunks load.",
@@ -74,6 +83,11 @@ public class ColorfulLightingConfig {
                         "  GENTLE   - pauses for 3x as long as it worked (~25% speed)")
                 .defineEnum("lightUpdateSpeed", LightUpdateSpeed.FASTEST);
         SPEC = BUILDER.build();
+    }
+
+    /** Safe before the config file is loaded; auto colors stay off until the config is available. */
+    public static boolean autoEmitterColors() {
+        return SPEC.isLoaded() && AUTO_EMITTER_COLORS.get();
     }
 
     /** Safe before the config file is loaded (e.g. during early startup), where {@code get()} would throw. */

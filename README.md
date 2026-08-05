@@ -69,9 +69,16 @@ In your resource pack's namespace folder (where folders like `textures` and `mod
     "minecraft:glowstone": "#00FF00",       // color in hex
     "minecraft:red_candle": "red",          // Minecraft dye name
     "minecraft:redstone_lamp": [0, 255, 255], // RGB array
-    "minecraft:soul_torch": "purple;5"      // ";5" overrides the emitted light level
+    "minecraft:soul_torch": "purple;5",     // ";5" overrides the emitted light level
+    "betterendforge:aurora_crystal": "auto" // color sampled from the block's texture
 }
 ```
+
+`"auto"` samples the emission color from the block's own texture (bright pixels dominate, so a
+lamp glows in the color of its glowing part) and applies the block's color provider tint at the
+block's actual position — made for blocks whose color changes with position or randomness, like
+Better End's aurora crystals. Light sources with no entry at all get the same treatment
+automatically unless you turn off `autoEmitterColors` in the client config.
 
 ### Block State Format
 
@@ -200,6 +207,27 @@ Similar to emitters, filters can also depend on block states.
     }
 }
 ```
+
+### Multiply Mode and Biome Water
+
+The full string syntax is `"<color>;<absorption>;<mode>;<strength>"`, where the last two parts are
+optional:
+
+```
+{
+    "minecraft:water": "biome_water;1;multiply;0.5",  // the default water filter
+    "minecraft:slime_block": "#36ff4d;7;multiply"     // a multiply filter with a fixed color
+}
+```
+
+*   **mode** — `clamp` (default) caps each color channel at the filter color, so one block of
+    stained glass tints light fully and further blocks add nothing. `multiply` tints the light a
+    little on **every block crossed** instead: light through one block of water barely shifts,
+    light through ten blocks comes out deeply colored. Use it for realistic media like water.
+*   **`biome_water`** as the color resolves the filter color from the **biome's water color at
+    that block**, so murky swamp water and clear ocean water filter light differently.
+*   **strength** — `0`-`1`, softens the color toward white (`0.5` = half strength). Handy to keep
+    `multiply` filters subtle.
 
 </details>
 

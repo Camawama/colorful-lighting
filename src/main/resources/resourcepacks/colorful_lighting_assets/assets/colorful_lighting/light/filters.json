@@ -61,5 +61,5 @@
   "minecraft:slime_block": "#36ff4d;7",
   "minecraft:honey_block": "#ff9100;7",
 
-  "minecraft:water": "#4287f5;2"
+  "minecraft:water": "biome_water;1;multiply;0.5"
 }

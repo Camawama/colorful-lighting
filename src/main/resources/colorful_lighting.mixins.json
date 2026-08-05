@@ -62,7 +62,14 @@
 	"compat.flerovium.FastSimpleBakedModelRendererMixin",
 	"compat.flerovium.BlockBreakingDecalGeneratorMixin",
 	"compat.flerovium.BlockBreakingDecalGeneratorIrisMixin",
-	"compat.asyncparticles.AsyncParticlesLightCacheMixin"
+	"compat.asyncparticles.AsyncParticlesLightCacheMixin",
+	"compat.epicfight.PatchedLivingEntityRendererMixin",
+	"compat.flopper.RenderBlockEntityFlopperMixin",
+	"compat.hbm.LightSampleCacheMixin",
+	"compat.hbm.AbstractPartBasedRendererMixin",
+	"compat.hbm.SingleMeshVboRendererMixin",
+	"compat.hbm.VanillaInstancedBatchRendererMixin",
+	"render.SpriteContentsAccessor"
   ],
   "injectors": {
     "defaultRequire": 1
