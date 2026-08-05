@@ -306,7 +306,7 @@ public class ClientEventListener {
             case 2 -> "2: geometry check (world-position stripes; should look like a 16-block 3D checker on the terrain)";
             case 3 -> "3: albedo only";
             case 4 -> "4: vanilla lightmap only";
-            case 5 -> "5: light coords (red = sky light, green = block light)";
+            case 5 -> "5: light coords (red = block light, green = sky light)";
             default -> "off";
         };
         source.sendSuccess(() -> Component.literal("DH LOD debug view " + description), false);

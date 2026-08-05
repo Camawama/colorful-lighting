@@ -10,7 +10,7 @@ in vec4 color;      // albedo
 out vec3 vertexWorldPos;   // camera-relative world position
 out float vertexYPos;      // absolute world Y
 out vec4 vertexAlbedo;
-out vec2 vertexLightCoord; // lightmap coords: x = sky, y = block
+out vec2 vertexLightCoord; // lightmap coords: x = high nibble (block light), y = low nibble (sky light)
 
 uniform mat4 uCombinedMatrix; // dhProjection * dhModelView
 uniform vec3 uModelOffset;    // buffer min corner minus exact camera position
@@ -33,10 +33,12 @@ void main()
     vertexWorldPos.x += mx;
     vertexWorldPos.z += mz;
 
+    // Same decode as DH's standard.vert. Note DH's names are swapped: the high nibble it calls
+    // "skyLight" is actually block light (the lightmap's u axis), the low nibble is sky light.
     uint lights = meta & 0xFFu;
-    float skyLight = (float(lights / 16u) + 0.5) / 16.0;
-    float blockLight = (mod(float(lights), 16.0) + 0.5) / 16.0;
-    vertexLightCoord = vec2(skyLight, blockLight);
+    float highNibble = (float(lights / 16u) + 0.5) / 16.0;
+    float lowNibble = (mod(float(lights), 16.0) + 0.5) / 16.0;
+    vertexLightCoord = vec2(highNibble, lowNibble);
 
     vertexAlbedo = color;
 

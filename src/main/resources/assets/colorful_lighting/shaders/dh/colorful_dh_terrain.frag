@@ -57,14 +57,21 @@ void main()
     vec3 net = presence > 0.001 ? stored.rgb / presence : vec3(0.0);
 
     // The remembered colour's brightness is already encoded in the LOD's baked block light; only the
-    // hue matters here. All-black stored colour means the light was absorbed, so block light dies.
+    // hue matters here. Weak remembered colour fades to white (vanilla light) instead of black:
+    // the 4-block downsampling washes a light's halo edge toward zero, and a black tint there would
+    // chop torch glows off at the LOD (2026-08-05 beacon test).
     float peak = max(net.r, max(net.g, net.b));
-    vec3 tint = peak > 0.02 ? net / peak : vec3(0.0);
+    vec3 hue = peak > 0.001 ? net / peak : vec3(1.0);
+    vec3 tint = mix(vec3(1.0), hue, clamp(peak * 8.0, 0.0, 1.0));
 
+    // Lightmap axes: u = block light, v = sky light (MC's layout). DH's standard.vert names the
+    // meta nibbles the other way around ("skyLight" = high nibble) but stays self-consistent; in
+    // truth the high nibble (vertexLightCoord.x) is BLOCK light. Trusting DH's names here put the
+    // sky lookup on the block axis and painted black patches wherever colour was remembered.
     const float LIGHT0 = 0.5 / 16.0;
     vec3 combined = texture(uLightMap, vertexLightCoord).rgb;
-    vec3 skyOnly = texture(uLightMap, vec2(vertexLightCoord.x, LIGHT0)).rgb;
-    vec3 blockOnly = texture(uLightMap, vec2(LIGHT0, vertexLightCoord.y)).rgb;
+    vec3 skyOnly = texture(uLightMap, vec2(LIGHT0, vertexLightCoord.y)).rgb;
+    vec3 blockOnly = texture(uLightMap, vec2(vertexLightCoord.x, LIGHT0)).rgb;
 
     vec3 colored = max(skyOnly, blockOnly * tint);
     float colorWeight = smoothstep(0.05, 0.5, presence);
@@ -99,7 +106,7 @@ void main()
     }
     else if (uClDebugMode == 5)
     {
-        // light coords: red = sky light amount, green = block light amount
+        // light coords: red = block light amount (high nibble), green = sky light amount (low nibble)
         fragColor = vec4(vertexLightCoord.x, vertexLightCoord.y, 0.0, 1.0);
     }
 
