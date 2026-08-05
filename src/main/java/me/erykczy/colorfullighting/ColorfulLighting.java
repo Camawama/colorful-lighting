@@ -85,8 +85,12 @@ public class ColorfulLighting
             me.erykczy.colorfullighting.compat.valkyrienskies.VsCompat.init();
             LOGGER.info("Valkyrien Skies detected!");
         }
+        if (ModList.get().isLoaded("nvidium") || ModList.get().isLoaded("acedium")) {
+            LOGGER.info("Nvidium/Acedium detected! Terrain light will be converted in their vertex encoder.");
+        }
         if(ModList.get().isLoaded("distanthorizons")) {
             me.erykczy.colorfullighting.compat.distanthorizons.DhCompat.init();
+            LOGGER.info("Distant horizons detected!");
         }
         DynamicLightsCompat.init();
     }

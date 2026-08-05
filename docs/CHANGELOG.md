@@ -7,6 +7,9 @@ Planned
 - add Sable / Create Aeronautics compatibility alongside Valkyrien Skies where possible
 
 2026-08-05
+- fixed crash on world join when Distant Horizons is not installed
+- fixed pitch-black terrain with Nvidium/Acedium installed
+- added colored terrain lighting under Nvidium/Acedium (hue fades to vanilla on sky-lit faces)
 - fixed dark Epic Fight mobs (zombies, skeletons, players and other patched models)
 - fixed striped light glitches on HBM Modernized machines
 - added full colored lighting on HBM Modernized machines (auto-disables if a future HBM update changes its shaders, falling back to plain correct brightness)

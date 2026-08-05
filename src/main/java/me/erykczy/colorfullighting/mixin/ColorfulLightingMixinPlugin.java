@@ -86,6 +86,11 @@ public class ColorfulLightingMixinPlugin implements IMixinConfigPlugin {
             // Ensure HBM Modernized is installed before applying its compat mixins
             return hasClass("com.hbm_m.client.render.LightSampleCache");
         }
+        if (mixinClassName.contains(".nvidium.")) {
+            // Ensure Nvidium or an Acedium port is installed; probe the target class itself
+            // since the mod id differs between the forks (nvidium / acedium)
+            return hasClass("me.cortex.nvidium.sodiumCompat.NvidiumCompactChunkVertex");
+        }
         if (mixinClassName.contains(".embeddium.")) {
             // Ensure SPECIFICALLY embeddium is installed
             return hasClass("org.embeddedt.embeddium_integrity.MixinTaintDetector");

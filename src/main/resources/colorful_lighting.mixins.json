@@ -69,6 +69,7 @@
 	"compat.hbm.AbstractPartBasedRendererMixin",
 	"compat.hbm.SingleMeshVboRendererMixin",
 	"compat.hbm.VanillaInstancedBatchRendererMixin",
+	"compat.nvidium.NvidiumCompactChunkVertexMixin",
 	"render.SpriteContentsAccessor"
   ],
   "injectors": {
