@@ -720,6 +720,17 @@ public class ColoredLightEngine {
     public ColoredLightSection dhGetDarknessSection(long sectionPos) {
         return darknessStorage.getSection(sectionPos);
     }
+
+    /**
+     * Whether a section's light data is trustworthy enough to remember for DH LODs: only inner
+     * view-area chunks are fully propagated. Border chunks hold partial spill-in, and a chunk on
+     * the trailing edge of a moving view area can get re-propagated with its neighbours already
+     * unloaded — capturing that would overwrite a good remembered state with clipped light.
+     * Client thread (viewArea is client-thread state, like updateViewArea).
+     */
+    public boolean dhIsSectionCaptureSafe(long sectionPos) {
+        return viewArea.containsInner(SectionPos.x(sectionPos), SectionPos.z(sectionPos));
+    }
     
     public void rebuildChunk(ChunkPos chunkPos) {
         rebuildChunk(chunkPos, 0);

@@ -318,7 +318,13 @@ public class ClientEventListener {
      * config. Enabling also relights the current area so the color memory has data to start from.
      */
     private static int setDhLodColor(CommandSourceStack source, boolean enable) {
-        String message = me.erykczy.colorfullighting.compat.distanthorizons.DhCompat.setOverrideEnabled(enable);
+        String message;
+        if (enable && !ColoredLightEngine.isEnabled()) {
+            // The clientTick reconcile will bind the override once '/cl on' turns the engine on.
+            message = "Colored LOD lighting saved; it will turn on together with colored lighting (/cl on)";
+        } else {
+            message = me.erykczy.colorfullighting.compat.distanthorizons.DhCompat.setOverrideEnabled(enable);
+        }
         if (me.erykczy.colorfullighting.compat.distanthorizons.DhCompat.isLoaded()) {
             me.erykczy.colorfullighting.common.ColorfulLightingConfig.DH_LOD_COLOR.set(enable);
             me.erykczy.colorfullighting.common.ColorfulLightingConfig.save();

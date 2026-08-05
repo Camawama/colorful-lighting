@@ -40,30 +40,48 @@ public final class DhColorCache {
     /** ~26MB of RAM/disk at worst; beyond this the farthest sections from the player are dropped. */
     public static final int MAX_SECTIONS = 131_072;
     private static final int MAGIC = 0x434C4432; // "CLD2"
-    private static final int FORMAT_VERSION = 1;
+    /**
+     * v2: mip clusters hold the dominant (most colorful) block instead of an average, and captures
+     * are inner-area-only. Old files may carry averaged or clipped data, so a version bump discards
+     * them and everything re-captures clean.
+     */
+    private static final int FORMAT_VERSION = 2;
 
     /** Immutable snapshot of one section's remembered colour. */
     public static final class Entry {
         /** RGB888 per 4x4x4-block cluster, indexed {@code (y>>2)<<4 | (z>>2)<<2 | (x>>2)}, each times 3. */
         public final byte[] mip;
-        /** Whole-section average, for the coarse far volume (one texel per section). */
-        public final byte avgR, avgG, avgB;
+        /**
+         * The section's dominant colour for the coarse far volume (one texel per section): the most
+         * COLORFUL cluster (highest chroma), not the brightest. Brightest picked a beacon's white
+         * core over the blue light its stained glass casts, turning the whole area white at
+         * distance; white light is "vanilla" anyway, so a real colour must always win over it.
+         * Falls back to the brightest cluster when the whole section is white/gray light.
+         */
+        public final byte domR, domG, domB;
 
-        Entry(byte[] mip, int avgR, int avgG, int avgB) {
+        Entry(byte[] mip, int domR, int domG, int domB) {
             this.mip = mip;
-            this.avgR = (byte) avgR;
-            this.avgG = (byte) avgG;
-            this.avgB = (byte) avgB;
+            this.domR = (byte) domR;
+            this.domG = (byte) domG;
+            this.domB = (byte) domB;
         }
 
         static Entry fromMip(byte[] mip) {
-            int r = 0, g = 0, b = 0;
+            int best = 0;
+            int bestChroma = -1;
+            int bestPeak = -1;
             for (int i = 0; i < MIP_TEXELS; ++i) {
-                r += mip[i * 3] & 0xFF;
-                g += mip[i * 3 + 1] & 0xFF;
-                b += mip[i * 3 + 2] & 0xFF;
+                int r = mip[i * 3] & 0xFF, g = mip[i * 3 + 1] & 0xFF, b = mip[i * 3 + 2] & 0xFF;
+                int peak = Math.max(r, Math.max(g, b));
+                int chroma = peak - Math.min(r, Math.min(g, b));
+                if (chroma > bestChroma || (chroma == bestChroma && peak > bestPeak)) {
+                    bestChroma = chroma;
+                    bestPeak = peak;
+                    best = i;
+                }
             }
-            return new Entry(mip, r / MIP_TEXELS, g / MIP_TEXELS, b / MIP_TEXELS);
+            return new Entry(mip, mip[best * 3] & 0xFF, mip[best * 3 + 1] & 0xFF, mip[best * 3 + 2] & 0xFF);
         }
     }
 
@@ -93,7 +111,13 @@ public final class DhColorCache {
     @Nullable
     public static Entry buildEntry(@Nullable ColoredLightSection light, @Nullable ColoredLightSection darkness) {
         if (light == null) return null;
-        int[] sums = null;
+        // Each 4x4x4 cluster keeps its dominant (most colorful, then brightest) block rather than an
+        // average. Only the HUE of a cluster is ever used (brightness comes from the LOD's own baked
+        // block light), and averaging over mostly-unlit blocks floored faint fringe clusters to
+        // zero, which cut light fields off jaggedly at their edges on LODs.
+        byte[] mip = null;
+        int[] bestChroma = null;
+        int[] bestPeak = null;
         for (int idx = 0; idx < 4096; ++idx) {
             int l = light.getPacked(idx);
             if (l == 0) continue;
@@ -102,19 +126,26 @@ public final class DhColorCache {
             int g = Math.max(0, ((l >>> 4) & 0xF) - ((d >>> 4) & 0xF));
             int b = Math.max(0, (l & 0xF) - (d & 0xF));
             if ((r | g | b) == 0) continue;
-            if (sums == null) sums = new int[MIP_TEXELS * 3];
+            if (mip == null) {
+                mip = new byte[MIP_BYTES];
+                bestChroma = new int[MIP_TEXELS];
+                bestPeak = new int[MIP_TEXELS];
+                java.util.Arrays.fill(bestChroma, -1);
+            }
+            int peak = Math.max(r, Math.max(g, b));
+            int chroma = peak - Math.min(r, Math.min(g, b));
             // getColorIndex is y<<8 | z<<4 | x
             int x = idx & 15, z = (idx >>> 4) & 15, y = (idx >>> 8) & 15;
-            int mi = ((y >> 2) << 4 | (z >> 2) << 2 | (x >> 2)) * 3;
-            sums[mi] += r * 17;     // nibble 0..15 -> 0..255
-            sums[mi + 1] += g * 17;
-            sums[mi + 2] += b * 17;
+            int mi = (y >> 2) << 4 | (z >> 2) << 2 | (x >> 2);
+            if (chroma > bestChroma[mi] || (chroma == bestChroma[mi] && peak > bestPeak[mi])) {
+                bestChroma[mi] = chroma;
+                bestPeak[mi] = peak;
+                mip[mi * 3] = (byte) (r * 17); // nibble 0..15 -> 0..255
+                mip[mi * 3 + 1] = (byte) (g * 17);
+                mip[mi * 3 + 2] = (byte) (b * 17);
+            }
         }
-        if (sums == null) return null;
-        byte[] mip = new byte[MIP_BYTES];
-        for (int i = 0; i < MIP_BYTES; ++i) {
-            mip[i] = (byte) (sums[i] / 64); // average over the 4x4x4 cluster, empty blocks included
-        }
+        if (mip == null) return null;
         return Entry.fromMip(mip);
     }
 

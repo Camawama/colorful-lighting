@@ -69,12 +69,22 @@ void main()
     // truth the high nibble (vertexLightCoord.x) is BLOCK light. Trusting DH's names here put the
     // sky lookup on the block axis and painted black patches wherever colour was remembered.
     const float LIGHT0 = 0.5 / 16.0;
-    vec3 combined = texture(uLightMap, vertexLightCoord).rgb;
+
+    float colorWeight = smoothstep(0.05, 0.5, presence);
+
+    // DH bakes LOD block light lazily: LODs fresh from a chunk conversion (or generated far away)
+    // can be missing whole swathes of light until DH re-bakes them, which reads as jagged dark
+    // cut-offs while flying. The colour memory also knows the light LEVEL, so lift the LOD's block
+    // light to at least the remembered level; DH's own baked value wins wherever it exists.
+    // peak 0..1 maps back to a light level: stored bytes are nibble*17, so nibble/16 = peak*0.9375.
+    float rememberedLevel = clamp(peak * 0.9375 + LIGHT0, 0.0, 1.0);
+    float blockCoord = max(vertexLightCoord.x, rememberedLevel * colorWeight);
+
+    vec3 combined = texture(uLightMap, vec2(blockCoord, vertexLightCoord.y)).rgb;
     vec3 skyOnly = texture(uLightMap, vec2(LIGHT0, vertexLightCoord.y)).rgb;
-    vec3 blockOnly = texture(uLightMap, vec2(vertexLightCoord.x, LIGHT0)).rgb;
+    vec3 blockOnly = texture(uLightMap, vec2(blockCoord, LIGHT0)).rgb;
 
     vec3 colored = max(skyOnly, blockOnly * tint);
-    float colorWeight = smoothstep(0.05, 0.5, presence);
     vec3 light = mix(combined, colored, colorWeight);
 
     fragColor = vec4(light, 1.0) * vertexAlbedo;

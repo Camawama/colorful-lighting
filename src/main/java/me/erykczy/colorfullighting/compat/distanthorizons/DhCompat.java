@@ -185,7 +185,15 @@ public final class DhCompat {
         if (level == null) return;
         DhColorCache cache = getOrCreateCache(level);
         if (cache == null) return;
-        long[] positions = sectionPositions.clone();
+        // Client thread: filter down to fully-propagated inner-area sections while the view area
+        // is still current. Unsafe sections keep whatever was remembered before.
+        int kept = 0;
+        long[] safe = new long[sectionPositions.length];
+        for (long pos : sectionPositions) {
+            if (engine.dhIsSectionCaptureSafe(pos)) safe[kept++] = pos;
+        }
+        if (kept == 0) return;
+        final long[] positions = java.util.Arrays.copyOf(safe, kept);
         WeakReference<ColoredLightEngine> engineRef = new WeakReference<>(engine);
         submit(() -> {
             ColoredLightEngine liveEngine = engineRef.get();
@@ -265,6 +273,16 @@ public final class DhCompat {
             setOverrideEnabled(false);
             ColorfulLighting.LOGGER.warn("[DH] shader override unbound after a failure; LODs are back to DH's own rendering");
         }
+
+        // Follow the main engine's on/off switch. DH always uses a bound override (it never asks
+        // overrideThisFrame on it), so '/cl off' must actually unbind or LODs would stay colored;
+        // '/cl on' rebinds automatically when the config wants DH colors.
+        boolean want = me.erykczy.colorfullighting.common.ColorfulLightingConfig.dhLodColor()
+                && ColoredLightEngine.isEnabled() && apiUsable && shaderContractOk;
+        if (want != overrideBound) {
+            setOverrideEnabled(want);
+        }
+
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null || mc.player == null) {
             activeCache = null;
