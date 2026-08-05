@@ -2,7 +2,7 @@
 
 A client-side Minecraft mod that makes block light **colored**: torches glow warm, soul fire glows blue, and stained glass tints the light passing through it. All of it is configurable through resource packs, and none of it requires the server to have the mod.
 
-> **Requires:** Minecraft **1.20.1** · Forge **47+** · [Embeddium](https://github.com/FiniteReality/embeddium) (**required**) · Oculus (optional, for shader packs)
+> **Requires:** Minecraft **1.20.1** · Forge **47+** · [Embeddium](https://github.com/FiniteReality/embeddium) (optional, recommended) · Oculus (optional, for shader packs)
 
 ## ℹ️ Fork Information
 
@@ -24,6 +24,8 @@ All of this light propagation runs on a separate background thread, so the game 
 *   Emitted colors and filtered colors can be customized in resource packs
 *   Block states can define different colors
 *   NBT can define different colors, for blocks, entities and items (a beacon lit by its effect, a charged creeper, a potion by its type)
+*   Modded light sources with no configured color automatically glow in a color sampled from their own texture
+*   Water subtly tints light passing through it, deepening with distance and matching the biome's water color (swamp water filters light differently than ocean water)
 *   The mod is client-side, so you can play with it on ANY server while still experiencing colorful lighting!
 
 ## 🔗 Mod Compatibility
@@ -31,14 +33,21 @@ All of this light propagation runs on a separate background thread, so the game 
 <details>
 <summary><b>Supported &amp; tested mods</b> (click to expand)</summary>
 
-*   **[Embeddium](https://github.com/FiniteReality/embeddium)**: Fully compatible and a **requirement**.
+*   **[Embeddium](https://github.com/FiniteReality/embeddium)**: Fully compatible and recommended, but **no longer required**: colored lighting now works with vanilla rendering too.
 *   **[Starlight](https://github.com/PaperMC/Starlight)**: Works seamlessly with Starlight.
 *   **[True Darkness](https://github.com/grondag/darkness)**: Compatible with True Darkness.
-*   **[Oculus](https://github.com/Asek3/Oculus)**: Colorful Lighting ships a shaderpack auto-patcher (similar to Euphoria Patches). On startup it scans your `shaderpacks` folder and creates a patched `<Pack> + ColorfulLighting` copy of every recognized pack. Select that copy in the Oculus shader GUI and the Colored Light Engine stays enabled; unpatched packs still disable the engine automatically. Run `/cl patchshaders` to re-scan without restarting, or set `autoPatchShaderpacks = false` in the client config to opt out. Unknown packs that read the lightmap through standard `gl_MultiTexCoord1` patterns still get the compatibility decode (correct light levels, no rainbow artifacts), just without the color tint.
+*   **[Oculus](https://github.com/Asek3/Oculus)**: Colorful Lighting ships a two-tier shader patcher. Specific shader packs get a **dedicated patch applied automatically as the pack loads**: currently the Complementary family (including Euphoria Patches) and the BSL family (v8 through v10, plus forks like Insanity). Just select the pack in the Oculus shader GUI and colored lighting works; no patched copy needed. Every other pack falls back to the generic auto-patcher (similar to Euphoria Patches): run `/cl patchshaders` to scan your `shaderpacks` folder and create a patched `<Pack> + ColorfulLighting` copy of every recognized pack, then select that copy in the shader GUI. Set `autoPatchShaderpacks = true` in the client config to run the scan automatically on every startup. Unpatched packs still disable the engine automatically, and unknown packs that read the lightmap through standard `gl_MultiTexCoord1` patterns still get the compatibility decode (correct light levels, no rainbow artifacts), just without the color tint.
 *   **Dynamic Light Mods**: Most dynamic light mods now work ([Sodium Dynamic Lights](https://modrinth.com/mod/sodium-dynamic-lights), [Torcy](https://www.curseforge.com/minecraft/mc-mods/torcy), [AtomicStryker's Dynamic Lights](https://github.com/AtomicStryker/atomicstrykers-minecraft-mods)). [Lively Lighting](https://github.com/Camawama/LivelyLighting) is the recommended companion: it is the only dynamic light mod that also works with `filters.json` and `entities.json` entries, and dynamic sources emit light with their configured color (the lingering-light bug is fixed).
 *   **[Wakes: Reforged](https://www.curseforge.com/minecraft/mc-mods/wakes-reforged)**: Works perfectly with wakes and tints them accordingly.
 *   **[Flywheel](https://github.com/Engine-Room/Flywheel) / [Create](https://github.com/Creators-of-Create/Create)**: Flywheel-rendered objects (Create contraptions, etc.) render with colorful lighting since Colorful Lighting 2.4.0. Supported versions: Flywheel `1.0.0-beta-214` through `1.0.8` with Create `6.0.x` (tested with Flywheel 1.0.5). OpenGL 4.5 is **no longer required**; on older GPUs and drivers (down to and below GL 4.3, including GL 4.1 Macs) the mod automatically falls back to a buffer-texture path instead of crashing. Ponder scenes also work fine, with no more red tint issue.
 *   **[Valkyrien Skies](https://github.com/ValkyrienSkies/Valkyrien-Skies-2)**: Colored lighting renders on ships, including dynamic light sources moving between ships and the world. *Recently added and still being tested; please report any issues.*
+*   **[Epic Fight](https://www.curseforge.com/minecraft/mc-mods/epic-fight-mod)**: Patched player and mob models (zombies, skeletons, players, etc.) render with correct colored lighting instead of appearing dark.
+*   **HBM's Nuclear Tech Modernized**: Machines render with full colored lighting and no striped light glitches. If a future HBM update changes its shaders, the compat auto-disables and falls back to plain correct brightness.
+*   **[Flerovium](https://modrinth.com/mod/flerovium)**: Held and dropped items, and the block-breaking cracks overlay, render with correct lighting instead of appearing dark.
+*   **[AsyncParticles](https://modrinth.com/mod/asyncparticles)**: Particles render with correct colored lighting instead of appearing dark.
+*   **Flopper**: The fluid inside floppers renders with correct lighting.
+
+> The Epic Fight, HBM, Flerovium, AsyncParticles and Flopper compats are recent additions; please report any issues.
 
 </details>
 
@@ -336,7 +345,8 @@ Define a separate light intensity/vibrancy value for each moon phase.
 | Option | Default | What it does |
 | --- | --- | --- |
 | `enabled` | `true` | Master switch for colored lighting. |
-| `autoPatchShaderpacks` | `true` | Create patched copies of shaderpacks that decode colored lighting (requires Oculus). |
+| `autoEmitterColors` | `true` | Automatically sample a light color from the block's texture for light sources with no configured color (typically modded blocks). Bright pixels dominate the sample, so a lamp glows in the color of its glowing part rather than its casing. Disable to make unconfigured light sources emit plain white light. |
+| `autoPatchShaderpacks` | `false` | Scan the `shaderpacks` folder on every startup and create patched copies of recognized packs (same as running `/cl patchshaders`; requires Oculus). |
 | `lightUpdateSpeed` | `FASTEST` | How quickly colored light fills in after chunks load. |
 
 <details>
@@ -376,15 +386,13 @@ does on your machine.
 
 A lot of people have asked where this project is headed, so here are the current plans:
 
-*   **Renderers**: Today, Embeddium is required and is the only supported renderer. Full support for **Sodium** itself is planned, alongside Embeddium.
+*   **Renderers**: Both Embeddium and vanilla rendering are supported today; Embeddium is recommended but no longer required. Full support for **Sodium** itself is planned.
 *   **Loaders and versions**: Today, the mod supports **Forge 1.20.1 only**. The goal is to support **Fabric, Forge and NeoForge** on every Minecraft version from **1.20.1 up to 26.2**. There are no plans to backport below 1.20.1.
-*   **Shader patcher**: A new shader patcher is in development, built on top of the current auto-patcher. It will apply dedicated patches for specific shader packs, while the current auto-patcher remains as the fallback for everything else.
+*   **Shader patcher**: The dedicated per-pack patcher is implemented and working (see the Oculus entry in Mod Compatibility), with the generic auto-patcher as the fallback for everything else. Dedicated patches for more shader packs, such as Sildur's Vibrant, are planned.
 
 No timelines are promised; follow the [GitHub repository](https://github.com/Camawama/colorful-lighting-sodium) for progress.
 
 ## ⚠️ Known Issues / Planned Fixes
 
 *   **[Distant Horizons](https://gitlab.com/distant-horizons-team/distant-horizons)**: Lights rendered inside LODs will not have color. A fix is in development for a future release.
-*   **[Flerovium](https://modrinth.com/mod/flerovium)**: Held and dropped items will appear dark. Planned fix for a future release.
-*   **[AsyncParticles](https://github.com/Harveykang/AsyncParticles)**: Particles appear dark. Planned fix for a future release.
-*   **[Immersive Portals](https://github.com/iPortalTeam/ImmersivePortalsMod)**: Does not crash, but light from the Nether will bleed into the Overworld while an immersive portal is being rendered. May be fixed in the future.
+*   **[Cracker's Wither Storm Mod](https://www.curseforge.com/minecraft/mc-mods/crackers-wither-storm-mod)**: **Not compatible.** The game crashes when the Wither Storm is spawned in. Because that mod's source code is private and closed, there are no plans to add compatibility or fix the crash.
