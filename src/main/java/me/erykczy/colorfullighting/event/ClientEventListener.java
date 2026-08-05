@@ -97,6 +97,9 @@ public class ClientEventListener {
 //            }
 //        }
 
+        // Keeps the DH color cache's active-level pointer fresh and autosaves it (no-op without DH)
+        me.erykczy.colorfullighting.compat.distanthorizons.DhCompat.clientTick();
+
         if (ColorfulLighting.clientAccessor == null) return;
         var player = ColorfulLighting.clientAccessor.getPlayer();
         if (player == null) return;
@@ -128,6 +131,9 @@ public class ClientEventListener {
     @SubscribeEvent
     public void onLevelUnload(LevelEvent.Unload event) {
         if (!event.getLevel().isClientSide()) return;
+        if (event.getLevel() instanceof net.minecraft.world.level.Level level) {
+            me.erykczy.colorfullighting.compat.distanthorizons.DhCompat.onLevelUnload(level);
+        }
 	    ((LevelAttachments) event.getLevel()).colorfullighting$getNbtCache().clear();
         BeaconEffectSync.clear();
 		// I think this is redundant
@@ -211,6 +217,31 @@ public class ClientEventListener {
                                     return 1;
                                 })
                         )
+                        .then(Commands.literal("dh")
+                                .executes(context -> {
+                                    for (String line : me.erykczy.colorfullighting.compat.distanthorizons.DhCompat.describeStatus().split("\n")) {
+                                        context.getSource().sendSuccess(() -> Component.literal(line), false);
+                                    }
+                                    return 1;
+                                })
+                                .then(Commands.literal("on")
+                                        .executes(context -> setDhLodColor(context.getSource(), true))
+                                )
+                                .then(Commands.literal("off")
+                                        .executes(context -> setDhLodColor(context.getSource(), false))
+                                )
+                                .then(Commands.literal("debug")
+                                        .executes(context -> {
+                                            int mode = me.erykczy.colorfullighting.compat.distanthorizons.DhCompat.getDebugMode() == 0 ? 1 : 0;
+                                            return setDhDebugMode(context.getSource(), mode);
+                                        })
+                                        .then(Commands.argument("mode", com.mojang.brigadier.arguments.IntegerArgumentType.integer(0, 5))
+                                                .executes(context -> setDhDebugMode(
+                                                        context.getSource(),
+                                                        com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(context, "mode")))
+                                        )
+                                )
+                        )
                         // Diagnostic and power-user commands live under one literal so the
                         // top-level autocomplete stays a short list: on, off, purge, debug.
                         .then(Commands.literal("debug")
@@ -266,6 +297,41 @@ public class ClientEventListener {
                                 )
                         )
         );
+    }
+
+    private static int setDhDebugMode(CommandSourceStack source, int mode) {
+        me.erykczy.colorfullighting.compat.distanthorizons.DhCompat.setDebugMode(mode);
+        String description = switch (mode) {
+            case 1 -> "1: color memory coverage (red = beyond range, blue = nothing remembered, else remembered light)";
+            case 2 -> "2: geometry check (world-position stripes; should look like a 16-block 3D checker on the terrain)";
+            case 3 -> "3: albedo only";
+            case 4 -> "4: vanilla lightmap only";
+            case 5 -> "5: light coords (red = sky light, green = block light)";
+            default -> "off";
+        };
+        source.sendSuccess(() -> Component.literal("DH LOD debug view " + description), false);
+        return 1;
+    }
+
+    /**
+     * Enables or disables colored lighting on Distant Horizons LODs, persisting the choice to the
+     * config. Enabling also relights the current area so the color memory has data to start from.
+     */
+    private static int setDhLodColor(CommandSourceStack source, boolean enable) {
+        String message = me.erykczy.colorfullighting.compat.distanthorizons.DhCompat.setOverrideEnabled(enable);
+        if (me.erykczy.colorfullighting.compat.distanthorizons.DhCompat.isLoaded()) {
+            me.erykczy.colorfullighting.common.ColorfulLightingConfig.DH_LOD_COLOR.set(enable);
+            me.erykczy.colorfullighting.common.ColorfulLightingConfig.save();
+        }
+        if (enable && me.erykczy.colorfullighting.compat.distanthorizons.DhCompat.isOverrideEnabled()) {
+            // Repropagate the loaded area so its colours get captured into the LOD color memory
+            ColoredLightEngine.resetAll();
+            if (Minecraft.getInstance().levelRenderer != null) {
+                Minecraft.getInstance().levelRenderer.allChanged();
+            }
+        }
+        source.sendSuccess(() -> Component.literal(message), false);
+        return 1;
     }
 
     /**

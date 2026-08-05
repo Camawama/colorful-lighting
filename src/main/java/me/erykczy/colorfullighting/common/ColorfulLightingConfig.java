@@ -47,6 +47,7 @@ public class ColorfulLightingConfig {
     public static final ForgeConfigSpec.EnumValue<LightUpdateSpeed> LIGHT_UPDATE_SPEED;
     public static final ForgeConfigSpec.BooleanValue FLYWHEEL_FORCE_TEXTURE_MODE;
     public static final ForgeConfigSpec.BooleanValue AUTO_EMITTER_COLORS;
+    public static final ForgeConfigSpec.BooleanValue DH_LOD_COLOR;
 
     public static final ForgeConfigSpec SPEC;
 
@@ -71,6 +72,13 @@ public class ColorfulLightingConfig {
                         "color depends on position (via a block color provider) are tinted per position.",
                         "Disable to make unconfigured light sources emit plain white light as before.")
                 .define("autoEmitterColors", true);
+        DH_LOD_COLOR = BUILDER
+                .comment(
+                        "Colored lighting on Distant Horizons LODs. Remembers the light colours of chunks you",
+                        "visit and replays them on the LODs after those chunks unload, out to about 1500 blocks.",
+                        "Needs Distant Horizons 3.x (DhApi 7). Costs ~56MB of VRAM while enabled.",
+                        "Toggle in-game with '/cl dh on' and '/cl dh off'.")
+                .define("dhLodColor", false);
         LIGHT_UPDATE_SPEED = BUILDER
                 .comment(
                         "How quickly colored light fills in after chunks load.",
@@ -88,6 +96,11 @@ public class ColorfulLightingConfig {
     /** Safe before the config file is loaded; auto colors stay off until the config is available. */
     public static boolean autoEmitterColors() {
         return SPEC.isLoaded() && AUTO_EMITTER_COLORS.get();
+    }
+
+    /** Safe before the config file is loaded; DH LOD colour stays off until the config is available. */
+    public static boolean dhLodColor() {
+        return SPEC.isLoaded() && DH_LOD_COLOR.get();
     }
 
     /** Safe before the config file is loaded (e.g. during early startup), where {@code get()} would throw. */

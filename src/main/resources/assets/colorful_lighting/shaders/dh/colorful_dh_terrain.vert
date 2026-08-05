@@ -1,0 +1,44 @@
+#version 150 core
+
+// Colorful Lighting replacement for Distant Horizons' standard.vert (DH 3.1.2).
+// Same inputs, same clip-space output; instead of baking the lightmap colour per vertex it forwards
+// the raw sky/block light and albedo so the fragment shader can recolour block light per fragment.
+
+in uvec4 vPosition; // xyz: block pos local to the buffer, w: meta (low byte lights, bits 8-13 micro offset)
+in vec4 color;      // albedo
+
+out vec3 vertexWorldPos;   // camera-relative world position
+out float vertexYPos;      // absolute world Y
+out vec4 vertexAlbedo;
+out vec2 vertexLightCoord; // lightmap coords: x = sky, y = block
+
+uniform mat4 uCombinedMatrix; // dhProjection * dhModelView
+uniform vec3 uModelOffset;    // buffer min corner minus exact camera position
+uniform float uWorldYOffset;
+uniform float uMircoOffset;
+
+void main()
+{
+    vertexWorldPos = vec3(vPosition.xyz) + uModelOffset;
+    vertexYPos = float(vPosition.y) + uWorldYOffset;
+
+    uint meta = vPosition.a;
+
+    // micro offset, identical to DH: 2 bits per axis, 0b01 positive, 0b11 negative (y unused)
+    uint mirco = (meta & 0xFF00u) >> 8u;
+    float mx = (mirco & 1u) != 0u ? uMircoOffset : 0.0;
+    mx = (mirco & 2u) != 0u ? -mx : mx;
+    float mz = (mirco & 16u) != 0u ? uMircoOffset : 0.0;
+    mz = (mirco & 32u) != 0u ? -mz : mz;
+    vertexWorldPos.x += mx;
+    vertexWorldPos.z += mz;
+
+    uint lights = meta & 0xFFu;
+    float skyLight = (float(lights / 16u) + 0.5) / 16.0;
+    float blockLight = (mod(float(lights), 16.0) + 0.5) / 16.0;
+    vertexLightCoord = vec2(skyLight, blockLight);
+
+    vertexAlbedo = color;
+
+    gl_Position = uCombinedMatrix * vec4(vertexWorldPos, 1.0);
+}

@@ -85,6 +85,9 @@ public class ColorfulLighting
             me.erykczy.colorfullighting.compat.valkyrienskies.VsCompat.init();
             LOGGER.info("Valkyrien Skies detected!");
         }
+        if(ModList.get().isLoaded("distanthorizons")) {
+            me.erykczy.colorfullighting.compat.distanthorizons.DhCompat.init();
+        }
         DynamicLightsCompat.init();
     }
 }

@@ -111,7 +111,8 @@ dependencies {
     // COMPILE ONLY
     compileOnly fg.deobf("curse.maven:oculus-581495:6020952")
     compileOnly fg.deobf("curse.maven:architectury-api-419699:5137938")
-    compileOnly fg.deobf("maven.modrinth:distanthorizonsapi:j15Y57xi")
+    // DhApi 7.0.0 — matches DH 3.x (DH 3.1.2-b reports API major 7)
+    compileOnly fg.deobf("maven.modrinth:distanthorizonsapi:GgrzKRsK")
 
     // Valkyrien Skies 2 (optional at runtime; detected via ModList).
     // Raw jar, not fg.deobf: we only reference VS's own (unobfuscated) API classes, and
@@ -124,7 +125,8 @@ dependencies {
     // RUNTIME ONLY
     runtimeOnly fg.deobf("curse.maven:cloth-config-348521:5729105")
     runtimeOnly fg.deobf("curse.maven:immersive-portals-for-forge-355440:6368524")
-    //runtimeOnly fg.deobf("curse.maven:distant-horizons-508933:7375280")
+    // DH 3.1.2-b for 1.20.1 (API major 7); older curse 508933:7375280 was API 5 and nonfunctional in dev
+    runtimeOnly fg.deobf("maven.modrinth:distanthorizons:4HFx4xGx")
     runtimeOnly fg.deobf("curse.maven:flerovium-1142875:7584065")
     runtimeOnly fg.deobf("curse.maven:asyncparticles-1215753:8551952")
     runtimeOnly fg.deobf("curse.maven:true-darkness-forge-updated-fork-970641:5080314")

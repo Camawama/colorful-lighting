@@ -4,6 +4,7 @@ import me.erykczy.colorfullighting.ColorfulLighting;
 import me.erykczy.colorfullighting.common.accessors.*;
 import me.erykczy.colorfullighting.common.accessors.mixin.LevelAttachments;
 import me.erykczy.colorfullighting.common.util.*;
+import me.erykczy.colorfullighting.compat.distanthorizons.DhCompat;
 import me.erykczy.colorfullighting.compat.dynamiclights.DynamicLightsCompat;
 import me.erykczy.colorfullighting.compat.flywheel.FlywheelCompat;
 import me.erykczy.colorfullighting.compat.oculus.OculusCompat;
@@ -700,6 +701,24 @@ public class ColoredLightEngine {
 	            ((LevelAttachments) this.level).colorfullighting$getFlywheelCompat().getStorage().recollectSectionIfTracked(dirtySection);
             }
         }
+
+        // Remember these sections' colour for Distant Horizons LODs (no-op unless /cl dh is on)
+        if (DhCompat.isOverrideEnabled()) {
+            DhCompat.onSectionsDirty(this, sectionsToUpdate);
+        }
+    }
+
+    /**
+     * DH compat accessors: the {@link me.erykczy.colorfullighting.compat.distanthorizons.DhColorCache}
+     * capture worker reads sections directly, racing the propagator the same benign way render-thread
+     * sampling does. Null when the section has left every tracked area.
+     */
+    public ColoredLightSection dhGetLightSection(long sectionPos) {
+        return storage.getSection(sectionPos);
+    }
+
+    public ColoredLightSection dhGetDarknessSection(long sectionPos) {
+        return darknessStorage.getSection(sectionPos);
     }
     
     public void rebuildChunk(ChunkPos chunkPos) {
