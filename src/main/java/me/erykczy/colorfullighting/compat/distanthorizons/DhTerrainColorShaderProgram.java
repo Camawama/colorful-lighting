@@ -25,6 +25,13 @@ import java.nio.charset.StandardCharsets;
  * internals are touched; if anything in here fails, {@link #overrideThisFrame()} starts returning
  * false and DH silently falls back to its own shader.
  *
+ * <p>Supports DH 3.1.2 and DH 3.2.0. Under 3.2.0 (detected via the shader contract check) the
+ * third vertex attribute carries {@code irisData} (face normal + block texture tile id) and DH
+ * binds a block texture atlas on texture unit 1; the tile modulation from DH's terrain frag is
+ * replicated so textured LODs keep their textures when colored. 3.2.0 also fixed the
+ * always-uses-bound-override quirk (it consults {@code overrideThisFrame()}), and its
+ * {@code uClipDistance} value is unchanged (nearClipPlane + 16).
+ *
  * <p>Mirrors {@code GlDhTerrainShaderProgram_forge} (DH 3.1.2, decompiled 2026-08-05):
  * <ul>
  * <li>Vertex format, stride 16: attr0 = 4 x u16 as integers ({@code uvec4 vPosition}: xyz local to
@@ -73,6 +80,10 @@ public final class DhTerrainColorShaderProgram implements IDhApiShaderProgram {
     private int uClFarMin;
     private int uClFarInvSize;
     private int uClDebugMode;
+    /** DH 3.2 textured LODs: DH binds its block atlas on this unit before our fillUniformData. */
+    private static final int BLOCK_ATLAS_TEXTURE_UNIT = 1;
+    private int uClBlockAtlas;
+    private int uClTexturedLods;
 
     private final float[] matrixScratch = new float[16];
 
@@ -134,6 +145,11 @@ public final class DhTerrainColorShaderProgram implements IDhApiShaderProgram {
             GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
             GL30.glVertexAttribIPointer(0, 4, GL11.GL_UNSIGNED_SHORT, VERTEX_STRIDE_BYTES, 0);
             GL20.glVertexAttribPointer(1, 4, GL11.GL_UNSIGNED_BYTE, true, VERTEX_STRIDE_BYTES, 8);
+            if (DhCompatImpl.isTexturedLodContract()) {
+                // DH 3.2: the third attribute (bytes 12-15, unused padding in 3.1.2) carries
+                // irisData — y = face normal index, zw = block texture tile id.
+                GL30.glVertexAttribIPointer(2, 4, GL11.GL_UNSIGNED_BYTE, VERTEX_STRIDE_BYTES, 12);
+            }
         } catch (Throwable t) {
             fail("bindVertexBuffer", t);
         }
@@ -188,6 +204,18 @@ public final class DhTerrainColorShaderProgram implements IDhApiShaderProgram {
             GL20.glUniform3f(uClFarMin, volume.farMinX(), volume.farMinY(), volume.farMinZ());
             GL20.glUniform1f(uClFarInvSize, volume.farInvSizeBlocks());
             GL20.glUniform1i(uClDebugMode, DhCompat.getDebugMode());
+
+            // DH 3.2 textured LODs: only sample the atlas when DH's config wants it AND DH's
+            // meta renderer actually bound an atlas on unit 1 this pass (it skips the bind when
+            // the feature is off or shaders are active, leaving the unit's binding arbitrary).
+            boolean textured = DhCompatImpl.texturedLodsEnabled();
+            if (textured) {
+                GL13.glActiveTexture(GL13.GL_TEXTURE0 + BLOCK_ATLAS_TEXTURE_UNIT);
+                textured = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D) != 0;
+                GL13.glActiveTexture(GL13.GL_TEXTURE0);
+            }
+            GL20.glUniform1i(uClTexturedLods, textured ? 1 : 0);
+            GL20.glUniform1i(uClBlockAtlas, BLOCK_ATLAS_TEXTURE_UNIT);
         } catch (Throwable t) {
             fail("fillUniformData", t);
         }
@@ -239,6 +267,7 @@ public final class DhTerrainColorShaderProgram implements IDhApiShaderProgram {
         // Same attribute locations DH assigns to its own program; the vertex buffers expect them.
         GL20.glBindAttribLocation(program, 0, "vPosition");
         GL20.glBindAttribLocation(program, 1, "color");
+        GL20.glBindAttribLocation(program, 2, "irisData");
         GL20.glLinkProgram(program);
         GL20.glDetachShader(program, vert);
         GL20.glDetachShader(program, frag);
@@ -265,11 +294,18 @@ public final class DhTerrainColorShaderProgram implements IDhApiShaderProgram {
         uClFarMin = GL20.glGetUniformLocation(program, "uClFarMin");
         uClFarInvSize = GL20.glGetUniformLocation(program, "uClFarInvSize");
         uClDebugMode = GL20.glGetUniformLocation(program, "uClDebugMode");
+        uClBlockAtlas = GL20.glGetUniformLocation(program, "uClBlockAtlas");
+        uClTexturedLods = GL20.glGetUniformLocation(program, "uClTexturedLods");
 
         vao = GL30.glGenVertexArrays();
         GL30.glBindVertexArray(vao);
         GL20.glEnableVertexAttribArray(0);
         GL20.glEnableVertexAttribArray(1);
+        // Under 3.1.2 the array stays disabled: the bytes at offset 12 are unused padding, and
+        // the shader's tile path is gated off by uClTexturedLods anyway.
+        if (DhCompatImpl.isTexturedLodContract()) {
+            GL20.glEnableVertexAttribArray(2);
+        }
         GL30.glBindVertexArray(0);
     }
 
@@ -301,7 +337,8 @@ public final class DhTerrainColorShaderProgram implements IDhApiShaderProgram {
             // DH 3.1.2 does NOT consult our overrideThisFrame() when picking the frame's program
             // (GlDhMetaRenderer_forge checks the default program's, a DH quirk), so returning false
             // is not enough — a bound-but-broken override would keep glitching LODs forever.
-            // Actually unbinding is the only real fallback.
+            // Actually unbinding is the only real fallback. (DH 3.2.0 fixed the quirk and does
+            // consult the override, but unbinding covers both versions.)
             DhCompat.requestEmergencyUnbind();
         }
     }

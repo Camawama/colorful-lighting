@@ -19,6 +19,7 @@ Planned
 - fixed the NBT light-rule scan re-serializing every tracked block entity 20 times a second; now scans at 2Hz (server-pushed changes still apply instantly)
 - fixed redundant shader re-binding in the Distant Horizons LOD override costing frame time
 - fixed invisible LOD water caused by the shader re-binding fix
+- added Distant Horizons 3.2.0-b support for colored LOD lighting, including its new textured LODs
 - fixed dark Epic Fight mobs (zombies, skeletons, players and other patched models)
 - fixed striped light glitches on HBM Modernized machines
 - added full colored lighting on HBM Modernized machines (auto-disables if a future HBM update changes its shaders, falling back to plain correct brightness)

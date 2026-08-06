@@ -76,35 +76,82 @@ final class DhCompatImpl {
         }
     }
 
+    /** Set when DH ships the 3.2.0+ terrain shader (irisData attribute + block texture atlas). */
+    private static volatile boolean texturedLodContract;
+
+    static boolean isTexturedLodContract() { return texturedLodContract; }
+
     /**
-     * Our override replicates the exact vertex contract of DH 3.1.2's terrain shader (buffer-local
-     * uvec4 positions plus a uModelOffset uniform). A DH build with a different standard.vert would
-     * misrender through our program, so read DH's own shader off the classpath and compare the parts
-     * we depend on. Mismatch logs loudly and blocks enabling instead of drawing garbage.
+     * Our override replicates the exact vertex contract of DH's terrain shader (buffer-local
+     * uvec4 positions plus a uModelOffset uniform). Two known layouts carry it:
+     * DH 3.1.2 at {@code shared/gl/standard.vert}, and DH 3.2.0 at {@code terrain/gl/vert.vert}
+     * (same vertex bytes; the previously unused third attribute became {@code irisData} with a
+     * block texture atlas on texture unit 1). A DH build with a different shader would misrender
+     * through our program, so read DH's own shader off the classpath and compare the parts we
+     * depend on. Mismatch logs loudly and blocks enabling instead of drawing garbage.
      */
     private static void checkShaderContract() {
-        try (java.io.InputStream in = DhApi.class.getResourceAsStream(
-                "/assets/distanthorizons/shaders/shared/gl/standard.vert")) {
-            if (in == null) {
+        try {
+            String vert320 = readDhResource("/assets/distanthorizons/shaders/terrain/gl/vert.vert");
+            String vert312 = vert320 == null
+                    ? readDhResource("/assets/distanthorizons/shaders/shared/gl/standard.vert") : null;
+            String vert = vert320 != null ? vert320 : vert312;
+            if (vert == null) {
                 shaderContractOk = false;
                 ColorfulLighting.LOGGER.warn(
-                        "[DH] this Distant Horizons build has no shared/gl/standard.vert; its render pipeline differs from the supported DH 3.1.2 and colored LOD lighting stays off");
+                        "[DH] this Distant Horizons build has neither terrain/gl/vert.vert (3.2) nor shared/gl/standard.vert (3.1); its render pipeline differs from the supported DH versions and colored LOD lighting stays off");
                 return;
             }
-            String vert = new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
             boolean hasModelOffset = vert.contains("uModelOffset");
             boolean hasUvecPosition = vert.contains("uvec4 vPosition");
+            texturedLodContract = vert320 != null && vert320.contains("irisData");
             shaderContractOk = hasModelOffset && hasUvecPosition;
             ColorfulLighting.LOGGER.info(
-                    "[DH] terrain shader contract check: standard.vert {} bytes, uModelOffset={}, uvec4 vPosition={}",
-                    vert.length(), hasModelOffset, hasUvecPosition);
+                    "[DH] terrain shader contract check: {} layout, {} bytes, uModelOffset={}, uvec4 vPosition={}, texturedLods={}",
+                    vert320 != null ? "3.2 (terrain/gl)" : "3.1 (shared/gl)",
+                    vert.length(), hasModelOffset, hasUvecPosition, texturedLodContract);
             if (!shaderContractOk) {
                 ColorfulLighting.LOGGER.warn(
-                        "[DH] this Distant Horizons version uses a different terrain shader contract than the supported DH 3.1.2; colored LOD lighting stays off to avoid misrendering LODs");
+                        "[DH] this Distant Horizons version uses a different terrain shader contract than the supported ones (DH 3.1.2 / 3.2.0); colored LOD lighting stays off to avoid misrendering LODs");
             }
         } catch (Exception e) {
             shaderContractOk = false;
             ColorfulLighting.LOGGER.warn("[DH] failed to check DH's terrain shader contract", e);
+        }
+    }
+
+    @Nullable
+    private static String readDhResource(String path) throws java.io.IOException {
+        try (java.io.InputStream in = DhApi.class.getResourceAsStream(path)) {
+            if (in == null) return null;
+            return new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        }
+    }
+
+    // DH 3.2's textured LODs: whether DH itself would sample the block atlas this frame. Mirrors
+    // the exact condition DH's own terrain program uses (the enableTexturedLods config entry);
+    // when it is off, DH's meta renderer leaves texture unit 1 unbound, so our shader must not
+    // sample it either. Internal-class reflection, cached; any failure disables tile texturing
+    // for the session (LODs then render 3.1-style flat colors, which is safe).
+    private static Object texturedLodsConfigEntry;
+    private static java.lang.reflect.Method texturedLodsGet;
+    private static boolean texturedLodsReflectFailed;
+
+    static boolean texturedLodsEnabled() {
+        if (!texturedLodContract || texturedLodsReflectFailed) return false;
+        try {
+            if (texturedLodsGet == null) {
+                Class<?> holder = Class.forName(
+                        "com.seibel.distanthorizons.core.config.Config$Client$Advanced$Graphics$Texture");
+                texturedLodsConfigEntry = holder.getField("enableTexturedLods").get(null);
+                texturedLodsGet = texturedLodsConfigEntry.getClass().getMethod("get");
+            }
+            return Boolean.TRUE.equals(texturedLodsGet.invoke(texturedLodsConfigEntry));
+        } catch (Throwable t) {
+            texturedLodsReflectFailed = true;
+            ColorfulLighting.LOGGER.warn(
+                    "[DH] could not read DH's enableTexturedLods config; colored LODs will render without block textures", t);
+            return false;
         }
     }
 

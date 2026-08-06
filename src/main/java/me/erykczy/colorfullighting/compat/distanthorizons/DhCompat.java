@@ -30,7 +30,7 @@ import javax.annotation.Nullable;
  */
 public final class DhCompat {
     public static final String MOD_ID = "distanthorizons";
-    /** DhApi major version this was built and tested against (DH 3.1.2-b). */
+    /** DhApi major version this was built and tested against (DH 3.1.2-b and 3.2.0-b both report 7). */
     public static final int SUPPORTED_API_MAJOR = 7;
 
     private static Boolean loaded;

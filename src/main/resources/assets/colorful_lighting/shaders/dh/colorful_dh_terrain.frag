@@ -1,13 +1,17 @@
 #version 150 core
 
-// Colorful Lighting replacement for Distant Horizons' flat_shaded.frag (DH 3.1.2).
+// Colorful Lighting replacement for Distant Horizons' terrain fragment shader (DH 3.1.2 & 3.2.0).
 // Recolours the block-light contribution of each LOD fragment using the remembered colour volumes,
 // then applies DH's dithered near fade so the hole around the vanilla render distance matches.
+// Under DH 3.2 with textured LODs enabled it also replicates DH's block-texture tile modulation.
 
 in vec3 vertexWorldPos;   // camera-relative
 in float vertexYPos;
 in vec4 vertexAlbedo;
 in vec2 vertexLightCoord; // x = sky, y = block
+in vec3 vBlockPos;        // DH 3.2 texture UVs
+flat in uint vNormalIndex;
+flat in uint vTextureTileId;
 
 out vec4 fragColor;
 
@@ -22,6 +26,30 @@ uniform float uClFarInvSize;
 uniform int uClDebugMode;        // 0 off, 1 volume debug view
 
 uniform float uClipDistance;     // near fade start, from DH's render params
+
+// DH 3.2 textured LODs. uClTexturedLods gates the whole path: under 3.1.2 the irisData
+// attribute array is disabled, so vTextureTileId reads the integer-attribute default (0,0,0,1)
+// = tile 256, and sampling would be garbage.
+uniform sampler2D uClBlockAtlas; // DH's block texture atlas, bound by DH on unit 1
+uniform int uClTexturedLods;
+
+/**
+ * Texture coordinate for this fragment, matching how DH bakes block textures (DH 3.2's frag).
+ * Normal index order is EDhDirection: 0 down, 1 up, 2 north, 3 south, 4 west, 5 east.
+ */
+vec2 blockFaceUv()
+{
+    vec3 pos = fract(vBlockPos);
+    switch (vNormalIndex)
+    {
+        case 0u: return vec2(pos.x, 1.0 - pos.z); // down
+        case 1u: return vec2(pos.x, pos.z); // up
+        case 2u: return vec2(1.0 - pos.x, 1.0 - pos.y); // north
+        case 3u: return vec2(pos.x, 1.0 - pos.y); // south
+        case 4u: return vec2(pos.z, 1.0 - pos.y); // west
+        default: return vec2(1.0 - pos.z, 1.0 - pos.y); // east
+    }
+}
 
 // DH's 4x4 Bayer matrix, for the same dithered fade its own shader uses
 float bayerMatrix4x4(vec2 st)
@@ -88,6 +116,18 @@ void main()
     vec3 light = mix(combined, colored, colorWeight);
 
     fragColor = vec4(light, 1.0) * vertexAlbedo;
+
+    // DH 3.2 block texture tiles: each tile stores a color ratio relative to the LOD's flat
+    // color (128 = keep base color). Identical math to DH's own frag, applied after our light
+    // tint the same way DH applies it after its lighting.
+    if (uClTexturedLods != 0 && vTextureTileId != 0u)
+    {
+        ivec2 tileOrigin = ivec2(int(vTextureTileId % 256u), int(vTextureTileId / 256u)) * 16;
+        ivec2 texelPos = tileOrigin + ivec2(clamp(blockFaceUv() * 16.0, 0.0, 15.0));
+        vec4 tile = texelFetch(uClBlockAtlas, texelPos, 0);
+        vec3 clampedColor = clamp(fragColor.rgb * (tile.rgb * 2.0), 0.0, 1.0);
+        fragColor.rgb = mix(fragColor.rgb, clampedColor, tile.a);
+    }
 
     if (uClDebugMode == 1)
     {

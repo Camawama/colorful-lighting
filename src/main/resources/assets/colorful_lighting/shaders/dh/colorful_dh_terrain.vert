@@ -1,16 +1,22 @@
 #version 150 core
 
-// Colorful Lighting replacement for Distant Horizons' standard.vert (DH 3.1.2).
+// Colorful Lighting replacement for Distant Horizons' terrain vertex shader (DH 3.1.2 & 3.2.0).
 // Same inputs, same clip-space output; instead of baking the lightmap colour per vertex it forwards
 // the raw sky/block light and albedo so the fragment shader can recolour block light per fragment.
 
 in uvec4 vPosition; // xyz: block pos local to the buffer, w: meta (low byte lights, bits 8-13 micro offset)
 in vec4 color;      // albedo
+// DH 3.2 only (attribute array disabled under 3.1.2, where these bytes are unused padding):
+// y = face normal index, zw = block texture tile id (little endian)
+in uvec4 irisData;
 
 out vec3 vertexWorldPos;   // camera-relative world position
 out float vertexYPos;      // absolute world Y
 out vec4 vertexAlbedo;
 out vec2 vertexLightCoord; // lightmap coords: x = high nibble (block light), y = low nibble (sky light)
+out vec3 vBlockPos;        // buffer-local position, fract() repeats per block (DH 3.2 texture UVs)
+flat out uint vNormalIndex;
+flat out uint vTextureTileId;
 
 uniform mat4 uCombinedMatrix; // dhProjection * dhModelView
 uniform vec3 uModelOffset;    // buffer min corner minus exact camera position
@@ -41,6 +47,10 @@ void main()
     vertexLightCoord = vec2(highNibble, lowNibble);
 
     vertexAlbedo = color;
+
+    vBlockPos = vec3(vPosition.xyz);
+    vNormalIndex = irisData.y;
+    vTextureTileId = irisData.z | (irisData.w << 8u);
 
     gl_Position = uCombinedMatrix * vec4(vertexWorldPos, 1.0);
 }
