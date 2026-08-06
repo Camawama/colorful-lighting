@@ -150,9 +150,9 @@ public final class DhColorVolume {
                     }
                 } else {
                     int index = ((tz * level.size + ty) * level.size + tx) * 4;
-                    staging.put(index, entry.domR);
-                    staging.put(index + 1, entry.domG);
-                    staging.put(index + 2, entry.domB);
+                    staging.put(index, entry.farR);
+                    staging.put(index + 1, entry.farG);
+                    staging.put(index + 2, entry.farB);
                     staging.put(index + 3, (byte) 0xFF);
                 }
             }

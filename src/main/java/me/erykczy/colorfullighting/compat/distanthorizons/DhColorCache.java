@@ -52,36 +52,51 @@ public final class DhColorCache {
         /** RGB888 per 4x4x4-block cluster, indexed {@code (y>>2)<<4 | (z>>2)<<2 | (x>>2)}, each times 3. */
         public final byte[] mip;
         /**
-         * The section's dominant colour for the coarse far volume (one texel per section): the most
-         * COLORFUL cluster (highest chroma), not the brightest. Brightest picked a beacon's white
-         * core over the blue light its stained glass casts, turning the whole area white at
-         * distance; white light is "vanilla" anyway, so a real colour must always win over it.
-         * Falls back to the brightest cluster when the whole section is white/gray light.
+         * The section's colour for the coarse far volume (one texel per section). The HUE is the
+         * most COLORFUL cluster's (highest chroma), not the brightest: brightest picked a beacon's
+         * white core over the blue light its stained glass casts, turning the whole area white at
+         * distance; white light is "vanilla" anyway, so a real colour must always win over it
+         * (falls back to the brightest cluster when the whole section is white/gray light).
+         *
+         * <p>The BRIGHTNESS is the section's average level (mean of the mip cells' peaks, unlit
+         * cells included), NOT the dominant cluster's own. The shader uses the sampled brightness
+         * as a floor under DH's baked block light, and lifting a whole 16-block section (plus its
+         * filtering neighbourhood) to the brightest source's level made every distant LOD with a
+         * light in it glow at full intensity; the average gives the section's aggregate glow.
          */
-        public final byte domR, domG, domB;
+        public final byte farR, farG, farB;
 
-        Entry(byte[] mip, int domR, int domG, int domB) {
+        Entry(byte[] mip, int farR, int farG, int farB) {
             this.mip = mip;
-            this.domR = (byte) domR;
-            this.domG = (byte) domG;
-            this.domB = (byte) domB;
+            this.farR = (byte) farR;
+            this.farG = (byte) farG;
+            this.farB = (byte) farB;
         }
 
         static Entry fromMip(byte[] mip) {
             int best = 0;
             int bestChroma = -1;
             int bestPeak = -1;
+            int levelSum = 0;
             for (int i = 0; i < MIP_TEXELS; ++i) {
                 int r = mip[i * 3] & 0xFF, g = mip[i * 3 + 1] & 0xFF, b = mip[i * 3 + 2] & 0xFF;
                 int peak = Math.max(r, Math.max(g, b));
                 int chroma = peak - Math.min(r, Math.min(g, b));
+                levelSum += peak;
                 if (chroma > bestChroma || (chroma == bestChroma && peak > bestPeak)) {
                     bestChroma = chroma;
                     bestPeak = peak;
                     best = i;
                 }
             }
-            return new Entry(mip, mip[best * 3] & 0xFF, mip[best * 3 + 1] & 0xFF, mip[best * 3 + 2] & 0xFF);
+            int domR = mip[best * 3] & 0xFF, domG = mip[best * 3 + 1] & 0xFF, domB = mip[best * 3 + 2] & 0xFF;
+            int domPeak = Math.max(domR, Math.max(domG, domB));
+            int avgLevel = levelSum / MIP_TEXELS;
+            if (domPeak == 0) return new Entry(mip, 0, 0, 0);
+            return new Entry(mip,
+                    Math.round(domR * (float) avgLevel / domPeak),
+                    Math.round(domG * (float) avgLevel / domPeak),
+                    Math.round(domB * (float) avgLevel / domPeak));
         }
     }
 
