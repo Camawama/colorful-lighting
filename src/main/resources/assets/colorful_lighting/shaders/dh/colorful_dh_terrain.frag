@@ -79,18 +79,23 @@ void main()
                 : inFar ? texture(uClVolumeFar, farCoord)
                 : vec4(0.0);
 
-    // Alpha is a presence mask; empty texels are (0,0,0,0), so dividing by alpha undoes the
-    // darkening that linear filtering against them causes (premultiplied-alpha style).
+    // Alpha is a presence mask; empty texels are (0,0,0,0). The HUE uses the un-premultiplied
+    // colour (dividing by alpha undoes the darkening linear filtering causes against empty
+    // texels), so it stays true across fade ramps.
     float presence = stored.a;
     vec3 net = presence > 0.001 ? stored.rgb / presence : vec3(0.0);
+    float netPeak = max(net.r, max(net.g, net.b));
+    vec3 hue = netPeak > 0.001 ? net / netPeak : vec3(1.0);
 
-    // The remembered colour's brightness is already encoded in the LOD's baked block light; only the
-    // hue matters here. Weak remembered colour fades to white (vanilla light) instead of black:
-    // the 4-block downsampling washes a light's halo edge toward zero, and a black tint there would
-    // chop torch glows off at the LOD (2026-08-05 beacon test).
-    float peak = max(net.r, max(net.g, net.b));
-    vec3 hue = peak > 0.001 ? net / peak : vec3(1.0);
-    vec3 tint = mix(vec3(1.0), hue, clamp(peak * 8.0, 0.0, 1.0));
+    // Tint strength is the remembered colour's SATURATION, not its brightness. The far volume
+    // averages a whole section into one texel, so the half of a light that spills into the next
+    // section is remembered dim — keying the tint on brightness snapped that half to white and
+    // visibly cut coloured light fields in two at section boundaries. Saturation keeps a dim
+    // coloured fringe coloured, while white/near-white light still gets no tint (its saturation
+    // is ~0), same as before.
+    float sat = netPeak > 0.001 ? (netPeak - min(net.r, min(net.g, net.b))) / netPeak : 0.0;
+    float colorWeight = smoothstep(0.05, 0.5, presence);
+    vec3 tint = mix(vec3(1.0), hue, clamp(sat * 2.0, 0.0, 1.0) * colorWeight);
 
     // Lightmap axes: u = block light, v = sky light (MC's layout). DH's standard.vert names the
     // meta nibbles the other way around ("skyLight" = high nibble) but stays self-consistent; in
@@ -98,13 +103,17 @@ void main()
     // sky lookup on the block axis and painted black patches wherever colour was remembered.
     const float LIGHT0 = 0.5 / 16.0;
 
-    float colorWeight = smoothstep(0.05, 0.5, presence);
-
     // DH bakes LOD block light lazily: LODs fresh from a chunk conversion (or generated far away)
     // can be missing whole swathes of light until DH re-bakes them, which reads as jagged dark
     // cut-offs while flying. The colour memory also knows the light LEVEL, so lift the LOD's block
     // light to at least the remembered level; DH's own baked value wins wherever it exists.
+    //
+    // The level uses the PREMULTIPLIED peak, unlike the hue: it must FADE across the filter ramp
+    // into unremembered space. The un-premultiplied value held the source's full brightness across
+    // the whole ramp and then snapped off at the presence threshold, which stamped a light's glow
+    // as a section-sized plateau cut off flat at the boundary (the "half a diamond" artifact).
     // peak 0..1 maps back to a light level: stored bytes are nibble*17, so nibble/16 = peak*0.9375.
+    float peak = max(stored.r, max(stored.g, stored.b));
     float rememberedLevel = clamp(peak * 0.9375 + LIGHT0, 0.0, 1.0);
     float blockCoord = max(vertexLightCoord.x, rememberedLevel * colorWeight);
 

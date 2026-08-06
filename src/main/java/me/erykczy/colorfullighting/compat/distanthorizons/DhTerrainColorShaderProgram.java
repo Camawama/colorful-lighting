@@ -8,12 +8,14 @@ import me.erykczy.colorfullighting.ColorfulLighting;
 import me.erykczy.colorfullighting.common.ColoredLightEngine;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.phys.Vec3;
+import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
 import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
+import org.lwjgl.opengl.GL41;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -65,6 +67,12 @@ public final class DhTerrainColorShaderProgram implements IDhApiShaderProgram {
     private volatile boolean failed;
     private int program;
     private int vao;
+    /**
+     * GL 4.1 {@code glProgramUniform*} writes a uniform on OUR program regardless of which program
+     * is bound, so the hot per-buffer paths skip the GL_CURRENT_PROGRAM query + glUseProgram guard
+     * entirely (they were ~5% of render-thread time in the 2026-08-06 profile at DH distances).
+     */
+    private boolean dsaUniforms;
 
     private int uCombinedMatrix;
     private int uModelOffset;
@@ -99,9 +107,10 @@ public final class DhTerrainColorShaderProgram implements IDhApiShaderProgram {
     }
 
     /**
-     * DH calls {@code bind()} and {@code setModelOffsetPos()} once per LOD buffer, and
-     * re-issuing glUseProgram per buffer was ~4% of render-thread time in profiling (a
-     * redundant glUseProgram still invalidates the driver's derived state). Skipping is only
+     * DH calls {@code bind()} once per LOD buffer, and re-issuing glUseProgram per buffer was
+     * ~4% of render-thread time in profiling (a redundant glUseProgram still invalidates the
+     * driver's derived state). Also the fallback for uniform updates when GL 4.1's
+     * glProgramUniform is unavailable. Skipping is only
      * safe when our program really is current, and that CANNOT be tracked with a flag: DH
      * switches to its own programs (SSAO, fog, clouds) between the opaque and transparent
      * passes without calling {@code unbind()} on the override — a flag-based skip drew the
@@ -159,19 +168,39 @@ public final class DhTerrainColorShaderProgram implements IDhApiShaderProgram {
     public void setModelOffsetPos(DhApiVec3f modelPos) {
         if (!ensureInitialized()) return;
         try {
-            useProgram();
-            GL20.glUniform3f(uModelOffset, modelPos.x, modelPos.y, modelPos.z);
+            // Hottest override entry point: called once per LOD buffer.
+            uniform3f(uModelOffset, modelPos.x, modelPos.y, modelPos.z);
         } catch (Throwable t) {
             fail("setModelOffsetPos", t);
         }
+    }
+
+    // Program-targeted uniform setters: with GL 4.1 they need no current program at all; the
+    // fallback keeps the pre-4.1 behaviour (callers ran useProgram() before them anyway).
+    private void uniform1i(int location, int value) {
+        if (dsaUniforms) GL41.glProgramUniform1i(program, location, value);
+        else { useProgram(); GL20.glUniform1i(location, value); }
+    }
+
+    private void uniform1f(int location, float value) {
+        if (dsaUniforms) GL41.glProgramUniform1f(program, location, value);
+        else { useProgram(); GL20.glUniform1f(location, value); }
+    }
+
+    private void uniform3f(int location, float x, float y, float z) {
+        if (dsaUniforms) GL41.glProgramUniform3f(program, location, x, y, z);
+        else { useProgram(); GL20.glUniform3f(location, x, y, z); }
+    }
+
+    private void uniformMatrix4(int location, boolean transpose, float[] values) {
+        if (dsaUniforms) GL41.glProgramUniformMatrix4fv(program, location, transpose, values);
+        else { useProgram(); GL20.glUniformMatrix4fv(location, transpose, values); }
     }
 
     @Override
     public void fillUniformData(DhApiRenderParam param) {
         if (!ensureInitialized()) return;
         try {
-            useProgram();
-
             // Keep the colour volume fresh; internally throttled, usually a no-op.
             Vec3 camera = Minecraft.getInstance().gameRenderer.getMainCamera().getPosition();
             DhColorVolume volume = DhCompat.getOrCreateVolume();
@@ -183,27 +212,27 @@ public final class DhTerrainColorShaderProgram implements IDhApiShaderProgram {
             // putValuesInArray is row-major (mRC rows first); DH's own storeMatrixInBuffer writes
             // col*4+row (column-major), so upload with transpose=true to match. Getting this wrong
             // renders the LODs as a camera-glued inverted-rotation sheet (test #2, 2026-08-05).
-            GL20.glUniformMatrix4fv(uCombinedMatrix, true, matrixScratch);
+            uniformMatrix4(uCombinedMatrix, true, matrixScratch);
 
-            GL20.glUniform1f(uMircoOffset, 0.01f);
-            GL20.glUniform1i(uLightMap, 0);
-            GL20.glUniform1f(uWorldYOffset, param.worldYOffset);
-            GL20.glUniform1f(uClipDistance, param.nearClipPlane + 16.0f);
+            uniform1f(uMircoOffset, 0.01f);
+            uniform1i(uLightMap, 0);
+            uniform1f(uWorldYOffset, param.worldYOffset);
+            uniform1f(uClipDistance, param.nearClipPlane + 16.0f);
 
-            GL20.glUniform1i(uClVolumeNear, NEAR_VOLUME_TEXTURE_UNIT);
-            GL20.glUniform1i(uClVolumeFar, FAR_VOLUME_TEXTURE_UNIT);
+            uniform1i(uClVolumeNear, NEAR_VOLUME_TEXTURE_UNIT);
+            uniform1i(uClVolumeFar, FAR_VOLUME_TEXTURE_UNIT);
             GL13.glActiveTexture(GL13.GL_TEXTURE0 + NEAR_VOLUME_TEXTURE_UNIT);
             GL11.glBindTexture(GL12.GL_TEXTURE_3D, volume.nearTextureId());
             GL13.glActiveTexture(GL13.GL_TEXTURE0 + FAR_VOLUME_TEXTURE_UNIT);
             GL11.glBindTexture(GL12.GL_TEXTURE_3D, volume.farTextureId());
             GL13.glActiveTexture(GL13.GL_TEXTURE0);
 
-            GL20.glUniform3f(uClCameraPos, (float) camera.x, (float) camera.y, (float) camera.z);
-            GL20.glUniform3f(uClNearMin, volume.nearMinX(), volume.nearMinY(), volume.nearMinZ());
-            GL20.glUniform1f(uClNearInvSize, volume.nearInvSizeBlocks());
-            GL20.glUniform3f(uClFarMin, volume.farMinX(), volume.farMinY(), volume.farMinZ());
-            GL20.glUniform1f(uClFarInvSize, volume.farInvSizeBlocks());
-            GL20.glUniform1i(uClDebugMode, DhCompat.getDebugMode());
+            uniform3f(uClCameraPos, (float) camera.x, (float) camera.y, (float) camera.z);
+            uniform3f(uClNearMin, volume.nearMinX(), volume.nearMinY(), volume.nearMinZ());
+            uniform1f(uClNearInvSize, volume.nearInvSizeBlocks());
+            uniform3f(uClFarMin, volume.farMinX(), volume.farMinY(), volume.farMinZ());
+            uniform1f(uClFarInvSize, volume.farInvSizeBlocks());
+            uniform1i(uClDebugMode, DhCompat.getDebugMode());
 
             // DH 3.2 textured LODs: only sample the atlas when DH's config wants it AND DH's
             // meta renderer actually bound an atlas on unit 1 this pass (it skips the bind when
@@ -214,8 +243,8 @@ public final class DhTerrainColorShaderProgram implements IDhApiShaderProgram {
                 textured = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D) != 0;
                 GL13.glActiveTexture(GL13.GL_TEXTURE0);
             }
-            GL20.glUniform1i(uClTexturedLods, textured ? 1 : 0);
-            GL20.glUniform1i(uClBlockAtlas, BLOCK_ATLAS_TEXTURE_UNIT);
+            uniform1i(uClTexturedLods, textured ? 1 : 0);
+            uniform1i(uClBlockAtlas, BLOCK_ATLAS_TEXTURE_UNIT);
         } catch (Throwable t) {
             fail("fillUniformData", t);
         }
@@ -252,6 +281,10 @@ public final class DhTerrainColorShaderProgram implements IDhApiShaderProgram {
     }
 
     private void init() throws IOException {
+        dsaUniforms = GL.getCapabilities().OpenGL41;
+        if (!dsaUniforms) {
+            ColorfulLighting.LOGGER.info("[DH override] GL 4.1 not available, using bound-program uniform updates");
+        }
         int vert = compileShader(GL20.GL_VERTEX_SHADER, readResource(VERT_PATH), VERT_PATH);
         int frag;
         try {
