@@ -62,6 +62,7 @@ public final class DhTerrainColorShaderProgram implements IDhApiShaderProgram {
     /** Well clear of unit 0, where DH binds the vanilla lightmap. */
     private static final int NEAR_VOLUME_TEXTURE_UNIT = 4;
     private static final int FAR_VOLUME_TEXTURE_UNIT = 5;
+    private static final int ULTRA_VOLUME_TEXTURE_UNIT = 6;
 
     private boolean initialized;
     private volatile boolean failed;
@@ -87,6 +88,9 @@ public final class DhTerrainColorShaderProgram implements IDhApiShaderProgram {
     private int uClNearInvSize;
     private int uClFarMin;
     private int uClFarInvSize;
+    private int uClVolumeUltra;
+    private int uClUltraMin;
+    private int uClUltraInvSize;
     private int uClDebugMode;
     /** DH 3.2 textured LODs: DH binds its block atlas on this unit before our fillUniformData. */
     private static final int BLOCK_ATLAS_TEXTURE_UNIT = 1;
@@ -221,10 +225,13 @@ public final class DhTerrainColorShaderProgram implements IDhApiShaderProgram {
 
             uniform1i(uClVolumeNear, NEAR_VOLUME_TEXTURE_UNIT);
             uniform1i(uClVolumeFar, FAR_VOLUME_TEXTURE_UNIT);
+            uniform1i(uClVolumeUltra, ULTRA_VOLUME_TEXTURE_UNIT);
             GL13.glActiveTexture(GL13.GL_TEXTURE0 + NEAR_VOLUME_TEXTURE_UNIT);
             GL11.glBindTexture(GL12.GL_TEXTURE_3D, volume.nearTextureId());
             GL13.glActiveTexture(GL13.GL_TEXTURE0 + FAR_VOLUME_TEXTURE_UNIT);
             GL11.glBindTexture(GL12.GL_TEXTURE_3D, volume.farTextureId());
+            GL13.glActiveTexture(GL13.GL_TEXTURE0 + ULTRA_VOLUME_TEXTURE_UNIT);
+            GL11.glBindTexture(GL12.GL_TEXTURE_3D, volume.ultraTextureId());
             GL13.glActiveTexture(GL13.GL_TEXTURE0);
 
             uniform3f(uClCameraPos, (float) camera.x, (float) camera.y, (float) camera.z);
@@ -232,6 +239,8 @@ public final class DhTerrainColorShaderProgram implements IDhApiShaderProgram {
             uniform1f(uClNearInvSize, volume.nearInvSizeBlocks());
             uniform3f(uClFarMin, volume.farMinX(), volume.farMinY(), volume.farMinZ());
             uniform1f(uClFarInvSize, volume.farInvSizeBlocks());
+            uniform3f(uClUltraMin, volume.ultraMinX(), volume.ultraMinY(), volume.ultraMinZ());
+            uniform1f(uClUltraInvSize, volume.ultraInvSizeBlocks());
             uniform1i(uClDebugMode, DhCompat.getDebugMode());
 
             // DH 3.2 textured LODs: only sample the atlas when DH's config wants it AND DH's
@@ -326,6 +335,9 @@ public final class DhTerrainColorShaderProgram implements IDhApiShaderProgram {
         uClNearInvSize = GL20.glGetUniformLocation(program, "uClNearInvSize");
         uClFarMin = GL20.glGetUniformLocation(program, "uClFarMin");
         uClFarInvSize = GL20.glGetUniformLocation(program, "uClFarInvSize");
+        uClVolumeUltra = GL20.glGetUniformLocation(program, "uClVolumeUltra");
+        uClUltraMin = GL20.glGetUniformLocation(program, "uClUltraMin");
+        uClUltraInvSize = GL20.glGetUniformLocation(program, "uClUltraInvSize");
         uClDebugMode = GL20.glGetUniformLocation(program, "uClDebugMode");
         uClBlockAtlas = GL20.glGetUniformLocation(program, "uClBlockAtlas");
         uClTexturedLods = GL20.glGetUniformLocation(program, "uClTexturedLods");

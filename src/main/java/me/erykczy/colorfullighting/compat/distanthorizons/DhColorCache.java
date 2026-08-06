@@ -63,11 +63,11 @@ public final class DhColorCache {
          * distance; white light is "vanilla" anyway, so a real colour must always win over it
          * (falls back to the brightest cluster when the whole section is white/gray light).
          *
-         * <p>The BRIGHTNESS is the section's average level (mean of the mip cells' levels, unlit
-         * cells included), NOT the dominant cluster's own. The shader uses the sampled brightness
-         * as a floor under DH's baked block light, and lifting a whole 16-block section (plus its
-         * filtering neighbourhood) to the brightest source's level made every distant LOD with a
-         * light in it glow at full intensity; the average gives the section's aggregate glow.
+         * <p>The BRIGHTNESS is halfway between the section's average level (mean of the mip
+         * cells' levels, unlit cells included) and its brightest cluster's. Pure brightest made
+         * every distant LOD with a light in it glow at full intensity across the whole section;
+         * pure average made a lone light nearly invisible at far/ultra range once the remembered
+         * level became the authoritative LOD light. See fromMip.
          */
         public final byte farR, farG, farB;
         /**
@@ -91,12 +91,14 @@ public final class DhColorCache {
             int bestChroma = -1;
             int bestPeak = -1;
             int levelSum = 0;
+            int maxLevel = 0;
             int maxAbsorption = 0;
             for (int i = 0; i < MIP_TEXELS; ++i) {
                 int r = mip[i * 4] & 0xFF, g = mip[i * 4 + 1] & 0xFF, b = mip[i * 4 + 2] & 0xFF;
                 int peak = Math.max(r, Math.max(g, b));
                 int chroma = peak - Math.min(r, Math.min(g, b));
                 levelSum += peak;
+                maxLevel = Math.max(maxLevel, peak);
                 maxAbsorption = Math.max(maxAbsorption, mip[i * 4 + 3] & 0xFF);
                 if (chroma > bestChroma || (chroma == bestChroma && peak > bestPeak)) {
                     bestChroma = chroma;
@@ -106,12 +108,18 @@ public final class DhColorCache {
             }
             int domR = mip[best * 4] & 0xFF, domG = mip[best * 4 + 1] & 0xFF, domB = mip[best * 4 + 2] & 0xFF;
             int domPeak = Math.max(domR, Math.max(domG, domB));
-            int avgLevel = levelSum / MIP_TEXELS;
+            // Halfway between the section average and its brightest cluster. The plain average
+            // was chosen when far brightness only LIFTED DH's bake; now that the remembered level
+            // is authoritative it must carry perceived brightness itself, and a lone light
+            // averaged over a 4096-block section rendered "extremely dim" at far/ultra range.
+            // The brightest-cluster share keeps a small source visible; the average share keeps
+            // a whole section from glowing at its hottest point's level (the test #7 complaint).
+            int farLevel = (levelSum / MIP_TEXELS + maxLevel) / 2;
             if (domPeak == 0) return new Entry(mip, 0, 0, 0, maxAbsorption);
             return new Entry(mip,
-                    Math.round(domR * (float) avgLevel / domPeak),
-                    Math.round(domG * (float) avgLevel / domPeak),
-                    Math.round(domB * (float) avgLevel / domPeak),
+                    Math.round(domR * (float) farLevel / domPeak),
+                    Math.round(domG * (float) farLevel / domPeak),
+                    Math.round(domB * (float) farLevel / domPeak),
                     maxAbsorption);
         }
     }

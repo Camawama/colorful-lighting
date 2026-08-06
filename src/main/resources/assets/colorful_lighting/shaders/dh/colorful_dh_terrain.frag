@@ -15,15 +15,18 @@ flat in uint vTextureTileId;
 
 out vec4 fragColor;
 
-uniform sampler2D uLightMap;     // vanilla lightmap, bound by DH on unit 0
-uniform sampler3D uClVolumeNear; // remembered colour, 4 blocks/texel
-uniform sampler3D uClVolumeFar;  // remembered colour, 16 blocks/texel
+uniform sampler2D uLightMap;      // vanilla lightmap, bound by DH on unit 0
+uniform sampler3D uClVolumeNear;  // remembered colour, 4 blocks/texel
+uniform sampler3D uClVolumeFar;   // remembered colour, 16 blocks/texel
+uniform sampler3D uClVolumeUltra; // remembered colour, 64 blocks/texel
 uniform vec3 uClCameraPos;
-uniform vec3 uClNearMin;         // world-space min corner of the near window
-uniform float uClNearInvSize;    // 1 / window size in blocks
+uniform vec3 uClNearMin;          // world-space min corner of the near window
+uniform float uClNearInvSize;     // 1 / window size in blocks
 uniform vec3 uClFarMin;
 uniform float uClFarInvSize;
-uniform int uClDebugMode;        // 0 off, 1 volume debug view
+uniform vec3 uClUltraMin;
+uniform float uClUltraInvSize;
+uniform int uClDebugMode;         // 0 off, 1 volume debug view
 
 uniform float uClipDistance;     // near fade start, from DH's render params
 
@@ -69,14 +72,17 @@ void main()
 {
     vec3 absPos = vec3(vertexWorldPos.x + uClCameraPos.x, vertexYPos, vertexWorldPos.z + uClCameraPos.z);
 
-    // Prefer the fine near volume, fall back to the coarse far one. A small margin keeps linear
-    // filtering from reading clamped edge texels.
+    // Prefer the finest volume that covers this fragment. A small margin keeps linear filtering
+    // from reading clamped edge texels.
     vec3 nearCoord = (absPos - uClNearMin) * uClNearInvSize;
     vec3 farCoord = (absPos - uClFarMin) * uClFarInvSize;
+    vec3 ultraCoord = (absPos - uClUltraMin) * uClUltraInvSize;
     bool inNear = all(greaterThan(nearCoord, vec3(0.005))) && all(lessThan(nearCoord, vec3(0.995)));
     bool inFar = all(greaterThan(farCoord, vec3(0.005))) && all(lessThan(farCoord, vec3(0.995)));
+    bool inUltra = all(greaterThan(ultraCoord, vec3(0.005))) && all(lessThan(ultraCoord, vec3(0.995)));
     vec4 stored = inNear ? texture(uClVolumeNear, nearCoord)
                 : inFar ? texture(uClVolumeFar, farCoord)
+                : inUltra ? texture(uClVolumeUltra, ultraCoord)
                 : vec4(0.0);
 
     // Alpha band: 0 = nothing remembered, ~0.5 = remembered, up to 1.0 = remembered + absorbing.
@@ -116,8 +122,12 @@ void main()
     // the whole ramp and then snapped off at the presence threshold, which stamped a light's glow
     // as a section-sized plateau cut off flat at the boundary (the "half a diamond" artifact).
     // peak 0..1 maps back to a light level: stored bytes are nibble*17, so nibble/16 = peak*0.9375.
+    // The boost compensates the levels being cluster AVERAGES, which read a couple of levels
+    // dimmer than the true in-world peaks; multiplicative so zeros stay zero (an additive boost
+    // would halo every glow's fringe).
+    const float LEVEL_BOOST = 1.5;
     float peak = max(stored.r, max(stored.g, stored.b));
-    float rememberedLevel = clamp(peak * 0.9375 + LIGHT0, 0.0, 1.0);
+    float rememberedLevel = clamp(peak * 0.9375 * LEVEL_BOOST + LIGHT0, 0.0, 1.0);
     float blockCoord = mix(vertexLightCoord.x, rememberedLevel, colorWeight);
 
     vec3 combined = texture(uLightMap, vec2(blockCoord, vertexLightCoord.y)).rgb;
@@ -151,9 +161,9 @@ void main()
 
     if (uClDebugMode == 1)
     {
-        // dark red: outside both windows; dim blue: in a window but nothing remembered;
+        // dark red: outside every window; dim blue: in a window but nothing remembered;
         // otherwise: the raw remembered colour
-        if (!inNear && !inFar) fragColor = vec4(0.3, 0.0, 0.0, 1.0);
+        if (!inNear && !inFar && !inUltra) fragColor = vec4(0.3, 0.0, 0.0, 1.0);
         else if (presence < 0.05) fragColor = vec4(0.05, 0.05, 0.3, 1.0);
         else fragColor = vec4(net, 1.0);
     }
