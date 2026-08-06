@@ -77,6 +77,13 @@ public class ColoredLightStorage {
         map.remove(sectionPos);
     }
 
+    /** Visits every stored section that actually holds colour data (lazy sections are skipped). */
+    public void forEachPopulatedSection(java.util.function.LongConsumer action) {
+        map.forEach((pos, section) -> {
+            if (section.hasData()) action.accept(pos);
+        });
+    }
+
     public void clear() {
         map.clear();
     }

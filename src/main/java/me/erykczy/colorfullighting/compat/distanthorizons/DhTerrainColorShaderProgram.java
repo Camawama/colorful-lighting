@@ -87,11 +87,28 @@ public final class DhTerrainColorShaderProgram implements IDhApiShaderProgram {
         return program;
     }
 
+    /**
+     * DH calls {@code bind()} and {@code setModelOffsetPos()} once per LOD buffer, and
+     * re-issuing glUseProgram per buffer was ~4% of render-thread time in profiling (a
+     * redundant glUseProgram still invalidates the driver's derived state). Skipping is only
+     * safe when our program really is current, and that CANNOT be tracked with a flag: DH
+     * switches to its own programs (SSAO, fog, clouds) between the opaque and transparent
+     * passes without calling {@code unbind()} on the override — a flag-based skip drew the
+     * water pass through DH's fog program and made LOD water invisible. GL_CURRENT_PROGRAM is
+     * client-side state, so querying it is nanoseconds and immune to whatever DH ran in
+     * between.
+     */
+    private void useProgram() {
+        if (GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM) != program) {
+            GL20.glUseProgram(program);
+        }
+    }
+
     @Override
     public void bind() {
         if (!ensureInitialized()) return;
         try {
-            GL20.glUseProgram(program);
+            useProgram();
             GL30.glBindVertexArray(vao);
         } catch (Throwable t) {
             fail("bind", t);
@@ -126,7 +143,7 @@ public final class DhTerrainColorShaderProgram implements IDhApiShaderProgram {
     public void setModelOffsetPos(DhApiVec3f modelPos) {
         if (!ensureInitialized()) return;
         try {
-            GL20.glUseProgram(program);
+            useProgram();
             GL20.glUniform3f(uModelOffset, modelPos.x, modelPos.y, modelPos.z);
         } catch (Throwable t) {
             fail("setModelOffsetPos", t);
@@ -137,7 +154,7 @@ public final class DhTerrainColorShaderProgram implements IDhApiShaderProgram {
     public void fillUniformData(DhApiRenderParam param) {
         if (!ensureInitialized()) return;
         try {
-            GL20.glUseProgram(program);
+            useProgram();
 
             // Keep the colour volume fresh; internally throttled, usually a no-op.
             Vec3 camera = Minecraft.getInstance().gameRenderer.getMainCamera().getPosition();

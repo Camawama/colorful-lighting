@@ -42,4 +42,14 @@ public class RenderChunkRegionMixin implements LevelAttachments {
 	public FlywheelCompat colorfullighting$getFlywheelCompat() {
 		return ((LevelAttachments) level).colorfullighting$getFlywheelCompat();
 	}
+
+	@Override
+	public me.erykczy.colorfullighting.compat.distanthorizons.DhColorCache colorfullighting$getDhColorCache() {
+		return ((LevelAttachments) level).colorfullighting$getDhColorCache();
+	}
+
+	@Override
+	public void colorfullighting$setDhColorCache(me.erykczy.colorfullighting.compat.distanthorizons.DhColorCache cache) {
+		((LevelAttachments) level).colorfullighting$setDhColorCache(cache);
+	}
 }

@@ -114,6 +114,15 @@ dependencies {
     // DhApi 7.0.0 — matches DH 3.x (DH 3.1.2-b reports API major 7)
     compileOnly fg.deobf("maven.modrinth:distanthorizonsapi:GgrzKRsK")
 
+    // Nvidium 0.2.6-beta (Fabric jar, compile-time only — users run it through Sinytra
+    // Connector; Acedium, the NeoForge port, has no 1.20.1 build to depend on instead).
+    // Raw jar, not fg.deobf: we only reference Nvidium's own (unobfuscated) classes in the
+    // mixin target, and its Sodium references resolve against Embeddium's identical package
+    // names. NEVER make this runtime — the Connector dev-runtime experiment crashed at boot.
+    compileOnly("maven.modrinth:nvidium:J2fuM58R") {
+        transitive = false
+    }
+
     // Valkyrien Skies 2 (optional at runtime; detected via ModList).
     // Raw jar, not fg.deobf: we only reference VS's own (unobfuscated) API classes, and
     // deobfing would drag VS's optional-integration transitives through ForgeGradle.

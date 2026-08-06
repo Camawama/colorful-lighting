@@ -10,13 +10,15 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
  * Wraps the encoder of Nvidium's/Acedium's replacement chunk vertex format so colored packed
- * light is converted before their bit-twiddling sees it (see {@link NvidiumCompat}). Targeted
- * by name because the class is identical across Nvidium and the Acedium ports; the encoder
- * internals differ between versions (byte- vs nibble-packed light), but both consume the
- * vanilla packed-light layout this wrapper produces, so one injection covers every variant.
+ * light is converted before their bit-twiddling sees it (see {@link NvidiumCompat}). Compiled
+ * against Nvidium 0.2.6-beta (compileOnly) so the target class and method are checked at
+ * build time; {@link Pseudo} keeps the mixin optional at runtime, and the same class name
+ * covers the Acedium ports. The encoder internals differ between versions (byte- vs
+ * nibble-packed light), but both consume the vanilla packed-light layout this wrapper
+ * produces, so one injection covers every variant.
  */
 @Pseudo
-@Mixin(targets = "me.cortex.nvidium.sodiumCompat.NvidiumCompactChunkVertex", remap = false)
+@Mixin(value = me.cortex.nvidium.sodiumCompat.NvidiumCompactChunkVertex.class, remap = false)
 public class NvidiumCompactChunkVertexMixin {
     @Inject(method = "getEncoder", at = @At("RETURN"), cancellable = true, require = 0)
     private void colorfullighting$wrapEncoder(CallbackInfoReturnable<ChunkVertexEncoder> cir) {

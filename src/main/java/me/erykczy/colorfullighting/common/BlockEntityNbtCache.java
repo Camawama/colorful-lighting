@@ -26,16 +26,28 @@ import java.util.concurrent.ConcurrentHashMap;
  * {@link Config} to read from any thread.
  *
  * <p>Only block entities whose block has an NBT-conditioned rule are tracked, so a pack that uses no
- * NBT rules pays nothing. Tracked block entities are re-serialized every client tick; a relight is
+ * NBT rules pays nothing. Tracked block entities are re-serialized on a periodic scan (plus
+ * immediately on server data packets); a relight is
  * queued only when the <em>resolved</em> emitter/filter/absorber changes, not when the NBT changes.
  * That distinction matters: a lit furnace rewrites {@code CookTime} every tick, and relighting on
  * every NBT delta would re-propagate light continuously.
  */
 public final class BlockEntityNbtCache {
+    /**
+     * The periodic full re-serialization scan is a fallback for client-side NBT mutations that
+     * arrive without a data packet; server-pushed changes refresh immediately through
+     * {@link #onBlockEntityDataChanged}. Serializing every tracked block entity and re-resolving
+     * its rules costs real frame time (~5% with a beacon-heavy world at 20Hz in profiling), so
+     * the scan runs at 2Hz — a resolved-light change from a silent mutation lags at most half a
+     * second, which reads as instant in game.
+     */
+    private static final int SCAN_INTERVAL_TICKS = 10;
+
     /** Written on the client thread, read from the light propagator thread. */
     private final ConcurrentHashMap<Long, CompoundTag> SNAPSHOTS = new ConcurrentHashMap<>();
     /** Client thread only. */
     private final Map<Long, Tracked> TRACKED = new HashMap<>();
+    private int ticksUntilScan;
 
     private static boolean loggedSaveFailure = false;
 
@@ -117,10 +129,13 @@ public final class BlockEntityNbtCache {
 
     /**
      * Re-serializes every tracked block entity and queues a relight where the resolved light changed.
-     * Called once per client tick, on the client thread.
+     * Called once per client tick, on the client thread; the actual scan runs every
+     * {@link #SCAN_INTERVAL_TICKS} ticks.
      */
     public void clientTick() {
         if (TRACKED.isEmpty()) return;
+        if (--ticksUntilScan > 0) return;
+        ticksUntilScan = SCAN_INTERVAL_TICKS;
 
         Iterator<Map.Entry<Long, Tracked>> iterator = TRACKED.entrySet().iterator();
         while (iterator.hasNext()) {

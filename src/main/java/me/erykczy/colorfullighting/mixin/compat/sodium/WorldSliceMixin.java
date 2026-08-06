@@ -42,4 +42,14 @@ public class WorldSliceMixin implements LevelAttachments {
 	public FlywheelCompat colorfullighting$getFlywheelCompat() {
 		return ((LevelAttachments) world).colorfullighting$getFlywheelCompat();
 	}
+
+	@Override
+	public me.erykczy.colorfullighting.compat.distanthorizons.DhColorCache colorfullighting$getDhColorCache() {
+		return ((LevelAttachments) world).colorfullighting$getDhColorCache();
+	}
+
+	@Override
+	public void colorfullighting$setDhColorCache(me.erykczy.colorfullighting.compat.distanthorizons.DhColorCache cache) {
+		((LevelAttachments) world).colorfullighting$setDhColorCache(cache);
+	}
 }

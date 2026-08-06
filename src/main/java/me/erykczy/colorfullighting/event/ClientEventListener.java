@@ -35,7 +35,10 @@ public class ClientEventListener {
     @SubscribeEvent
     public void onTick(TickEvent.LevelTickEvent event) {
 	    if (event.side != LogicalSide.CLIENT) return;
-		
+	    // LevelTickEvent fires at START and END; without this gate the whole body ran twice
+	    // per tick (a solid ~5% of render-thread time in profiling, mostly the NBT cache scan)
+	    if (event.phase != TickEvent.Phase.END) return;
+
 	    if (ColorfulLighting.clientAccessor == null) return;
 	    var player = ColorfulLighting.clientAccessor.getPlayer();
 	    if (player == null) return;
@@ -99,6 +102,9 @@ public class ClientEventListener {
 
         // Keeps the DH color cache's active-level pointer fresh and autosaves it (no-op without DH)
         me.erykczy.colorfullighting.compat.distanthorizons.DhCompat.clientTick();
+
+        // Tracks night vibrancy for the tint baked into Nvidium/Acedium meshes (no-op without them)
+        me.erykczy.colorfullighting.compat.nvidium.NvidiumCompat.clientTick();
 
         if (ColorfulLighting.clientAccessor == null) return;
         var player = ColorfulLighting.clientAccessor.getPlayer();

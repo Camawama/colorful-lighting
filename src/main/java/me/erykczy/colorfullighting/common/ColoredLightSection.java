@@ -72,6 +72,11 @@ public class ColoredLightSection {
     }
 
 
+    /** Whether any colour has ever been written to this section (allocation is lazy). */
+    public boolean hasData() {
+        return this.data != null;
+    }
+
     public void clear() {
         this.data = null;
     }

@@ -12,6 +12,13 @@ Planned
 - added colored terrain lighting under Nvidium/Acedium (hue fades slightly to vanilla on sky-lit faces)
 - fixed skylight washing out colored terrain light way too much under Nvidium/Acedium
 - fixed colored light under Nvidium/Acedium tinting its whole light field at full saturation instead of fading to darkness with distance
+- added night vibrancy (moon cycle) support to colored terrain light under Nvidium/Acedium
+- fixed the Nvidium/Acedium night vibrancy barely responding to the moon cycle (vanilla star brightness caps at 0.5, which halved the effect)
+- removed the whole-world refresh flash when night vibrancy changes under Nvidium/Acedium; only chunks with colored light re-mesh, in the background
+- fixed the level tick handler running twice per tick, wasting frame time
+- fixed the NBT light-rule scan re-serializing every tracked block entity 20 times a second; now scans at 2Hz (server-pushed changes still apply instantly)
+- fixed redundant shader re-binding in the Distant Horizons LOD override costing frame time
+- fixed invisible LOD water caused by the shader re-binding fix
 - fixed dark Epic Fight mobs (zombies, skeletons, players and other patched models)
 - fixed striped light glitches on HBM Modernized machines
 - added full colored lighting on HBM Modernized machines (auto-disables if a future HBM update changes its shaders, falling back to plain correct brightness)

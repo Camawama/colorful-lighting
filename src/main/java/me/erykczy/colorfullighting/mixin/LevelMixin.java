@@ -36,6 +36,9 @@ public class LevelMixin implements LevelAttachments {
 	BlockEntityNbtCache colorfullighting$nbtCache;
 	@Unique
 	FlywheelCompat colorfullighting$flywheelCompat;
+	/** Written on the client thread, read by the render thread; volatile for safe publication. */
+	@Unique
+	volatile me.erykczy.colorfullighting.compat.distanthorizons.DhColorCache colorfullighting$dhColorCache;
 	
 	@Inject(at = @At("TAIL"), method = "<init>")
 	public void postInit(WritableLevelData p_270739_, ResourceKey p_270683_, RegistryAccess p_270200_, Holder p_270240_, Supplier p_270692_, boolean p_270904_, boolean p_270470_, long p_270248_, int p_270466_, CallbackInfo ci) {
@@ -89,6 +92,16 @@ public class LevelMixin implements LevelAttachments {
 	@Override
 	public FlywheelCompat colorfullighting$getFlywheelCompat() {
 		return colorfullighting$flywheelCompat;
+	}
+
+	@Override
+	public me.erykczy.colorfullighting.compat.distanthorizons.DhColorCache colorfullighting$getDhColorCache() {
+		return colorfullighting$dhColorCache;
+	}
+
+	@Override
+	public void colorfullighting$setDhColorCache(me.erykczy.colorfullighting.compat.distanthorizons.DhColorCache cache) {
+		colorfullighting$dhColorCache = cache;
 	}
 	
 	@Inject(at = @At("HEAD"), method = "close")

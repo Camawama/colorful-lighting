@@ -8,6 +8,7 @@ import com.seibel.distanthorizons.api.methods.events.sharedParameterObjects.DhAp
 import me.erykczy.colorfullighting.ColorfulLighting;
 import me.erykczy.colorfullighting.common.ColoredLightEngine;
 import me.erykczy.colorfullighting.common.ColoredLightSection;
+import me.erykczy.colorfullighting.common.accessors.mixin.LevelAttachments;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.SectionPos;
 import net.minecraft.world.level.Level;
@@ -15,8 +16,6 @@ import net.minecraft.world.level.Level;
 import javax.annotation.Nullable;
 import java.lang.ref.WeakReference;
 import java.nio.file.Path;
-import java.util.Map;
-import java.util.WeakHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 
 /**
@@ -35,12 +34,6 @@ final class DhCompatImpl {
     private static volatile boolean overrideBound;
     private static DhTerrainColorShaderProgram overrideProgram;
     private static DhColorVolume volume; // render thread only
-
-    private static final Map<Level, DhColorCache> CACHES = new WeakHashMap<>();
-    /** Cache of the level currently being played, republished for the render thread. */
-    private static volatile DhColorCache activeCache;
-    /** Player section, for cache pruning; written on the client thread, read on the worker. */
-    private static volatile long playerSectionPos;
     private static long lastSaveMs;
 
     private static final LinkedBlockingQueue<Runnable> WORKER_QUEUE = new LinkedBlockingQueue<>();
@@ -171,6 +164,11 @@ final class DhCompatImpl {
         }
         if (kept == 0) return;
         final long[] positions = java.util.Arrays.copyOf(safe, kept);
+        // Player section for pruning, captured on the client thread rather than kept as
+        // shared mutable state.
+        var mcPlayer = Minecraft.getInstance().player;
+        final long playerSection = mcPlayer == null ? 0L : SectionPos.asLong(
+                mcPlayer.getBlockX() >> 4, mcPlayer.getBlockY() >> 4, mcPlayer.getBlockZ() >> 4);
         WeakReference<ColoredLightEngine> engineRef = new WeakReference<>(engine);
         submit(() -> {
             ColoredLightEngine liveEngine = engineRef.get();
@@ -181,31 +179,38 @@ final class DhCompatImpl {
                 DhColorCache.Entry entry = DhColorCache.buildEntry(light, liveEngine.dhGetDarknessSection(pos));
                 cache.store(pos, entry);
             }
-            long player = playerSectionPos;
-            cache.pruneIfNeeded(SectionPos.x(player), SectionPos.z(player));
+            cache.pruneIfNeeded(SectionPos.x(playerSection), SectionPos.z(playerSection));
         });
     }
 
     // ================ per-level cache ================
 
-    /** Render thread accessor; the client tick keeps it pointing at the current level's cache. */
+    /**
+     * Render thread accessor: the cache lives on the level itself ({@link LevelAttachments}),
+     * so this simply follows the client's current level. Null until the client tick creates it.
+     */
     @Nullable
-    static DhColorCache getActiveCache() { return activeCache; }
+    static DhColorCache getActiveCache() {
+        if (!overrideBound) return null;
+        Level level = Minecraft.getInstance().level;
+        if (level == null) return null;
+        return ((LevelAttachments) level).colorfullighting$getDhColorCache();
+    }
 
+    /** Client thread only (clientTick and the engine's dirty-section drain). */
     @Nullable
     private static DhColorCache getOrCreateCache(Level level) {
-        synchronized (CACHES) {
-            DhColorCache cache = CACHES.get(level);
-            if (cache == null) {
-                Path file = cacheFileFor(level);
-                if (file == null) return null;
-                cache = new DhColorCache(file);
-                CACHES.put(level, cache);
-                DhColorCache created = cache;
-                submit(created::load);
-            }
-            return cache;
+        LevelAttachments attachments = (LevelAttachments) level;
+        DhColorCache cache = attachments.colorfullighting$getDhColorCache();
+        if (cache == null) {
+            Path file = cacheFileFor(level);
+            if (file == null) return null;
+            DhColorCache created = new DhColorCache(file);
+            attachments.colorfullighting$setDhColorCache(created);
+            submit(created::load);
+            return created;
         }
+        return cache;
     }
 
     /**
@@ -260,37 +265,23 @@ final class DhCompatImpl {
         }
 
         Minecraft mc = Minecraft.getInstance();
-        if (mc.level == null || mc.player == null) {
-            activeCache = null;
-            return;
-        }
-        playerSectionPos = SectionPos.asLong(
-                mc.player.getBlockX() >> 4, mc.player.getBlockY() >> 4, mc.player.getBlockZ() >> 4);
-        activeCache = overrideBound ? getOrCreateCache(mc.level) : null;
+        if (mc.level == null || mc.player == null) return;
+        DhColorCache cache = overrideBound
+                ? getOrCreateCache(mc.level)
+                : ((LevelAttachments) mc.level).colorfullighting$getDhColorCache();
 
+        // Autosave the current level's cache; other levels' caches are saved on their unload.
         long now = System.currentTimeMillis();
-        if (now - lastSaveMs > SAVE_INTERVAL_MS) {
+        if (cache != null && cache.needsSave() && now - lastSaveMs > SAVE_INTERVAL_MS) {
             lastSaveMs = now;
-            saveAll(false);
+            submit(cache::save);
         }
     }
 
-    /** Level unload: persist what we learned. The cache object itself stays until the Level is GCed. */
+    /** Level unload: persist what we learned. The cache object lives and dies with the Level. */
     static void onLevelUnload(Level level) {
-        DhColorCache cache;
-        synchronized (CACHES) {
-            cache = CACHES.get(level);
-        }
+        DhColorCache cache = ((LevelAttachments) level).colorfullighting$getDhColorCache();
         if (cache != null) submit(cache::save);
-        if (activeCache == cache) activeCache = null;
-    }
-
-    private static void saveAll(boolean force) {
-        synchronized (CACHES) {
-            for (DhColorCache cache : CACHES.values()) {
-                if (force || cache.needsSave()) submit(cache::save);
-            }
-        }
     }
 
     // ================ render-thread volume ================
@@ -337,7 +328,7 @@ final class DhCompatImpl {
         }
         if (!apiUsable) sb.append(" (DH API unsupported)");
         if (!shaderContractOk) sb.append(" (DH terrain shader contract mismatch)");
-        DhColorCache cache = activeCache;
+        DhColorCache cache = getActiveCache();
         if (cache != null) {
             sb.append("\nRemembered sections in this dimension: ").append(cache.getSectionCount());
             sb.append("\nCache file: ").append(cache.getFile().getFileName());

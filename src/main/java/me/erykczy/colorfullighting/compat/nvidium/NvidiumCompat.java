@@ -1,7 +1,13 @@
 package me.erykczy.colorfullighting.compat.nvidium;
 
+import me.erykczy.colorfullighting.common.ColoredLightEngine;
+import me.erykczy.colorfullighting.common.Config;
+import me.erykczy.colorfullighting.common.accessors.mixin.LevelAttachments;
 import me.erykczy.colorfullighting.compat.CompatPackedLight;
 import me.jellysquid.mods.sodium.client.render.chunk.vertex.format.ChunkVertexEncoder;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.core.SectionPos;
 
 /**
  * Compat for Nvidium/Acedium, mesh-shader terrain renderers that replace Sodium's chunk
@@ -42,6 +48,15 @@ import me.jellysquid.mods.sodium.client.render.chunk.vertex.format.ChunkVertexEn
  * colors out almost entirely, which looked especially wrong at night when the real sky adds
  * nothing; a small fixed weight keeps noon terrain from being over-tinted while leaving the
  * color clearly visible whenever the colored source competes with the sky at all.
+ *
+ * <p>Night vibrancy (moon_phases.json): the shader paths scale their sky washout by a
+ * per-frame {@code u_NightVibrancy} uniform ({@code starBrightness * moonVibrancy}, see
+ * {@code DefaultChunkRendererMixin}); a baked tint has no uniforms, so {@link #clientTick()}
+ * samples the same value each tick, the sky term is scaled by {@code 1 - vibrancy} at bake
+ * time, and when the value (quantized to quarter steps) changes, the sections that hold
+ * colour data are marked dirty and re-mesh in the background. Vibrancy only moves during
+ * dusk/dawn (the moon phase flips at dawn, inside that window), so that costs a few partial
+ * re-mesh waves per transition and none during stable day or night.
  */
 public final class NvidiumCompat {
     /**
@@ -55,10 +70,55 @@ public final class NvidiumCompat {
      */
     private static final float AMBIENT_FLOOR = 0.05f;
 
+    /** True once the encoder wrapper is installed, i.e. Nvidium/Acedium is actually running. */
+    private static volatile boolean active;
+    /** Exact night vibrancy baked into tints, mirroring the shader paths' uniform. */
+    private static volatile float bakedVibrancy;
+    /** Quarter-quantized vibrancy of the current meshes; a change triggers the re-mesh. */
+    private static float lastQuantized;
+    private static boolean vibrancyInitialized;
+
     private NvidiumCompat() {}
+
+    /**
+     * Client tick: tracks the shader paths' night-vibrancy value (night factor x moon phase
+     * vibrancy) for the baked tint and re-meshes the terrain when it crosses a quarter step.
+     * The tint always bakes the exact value; the quantization only gates how often the
+     * terrain re-meshes to pick it up.
+     */
+    public static void clientTick() {
+        if (!active) return;
+        Minecraft mc = Minecraft.getInstance();
+        ClientLevel level = mc.level;
+        if (level == null) return;
+        // Vanilla star brightness peaks at 0.5 at midnight (NOT 1.0), so rescale it to make
+        // full night read as 1.0 — otherwise the moon-phase swing is halved and disappears
+        // into the quantization.
+        float nightFactor = Math.min(1.0f, level.getStarBrightness(mc.getFrameTime()) * 2.0f);
+        float moonVibrancy = Config.getMoonVibrancy(level.getMoonPhase());
+        float total = Math.max(0.0f, Math.min(1.0f, nightFactor * moonVibrancy));
+        bakedVibrancy = total;
+        float quantized = Math.round(total * 4.0f) / 4.0f;
+        if (quantized == lastQuantized && vibrancyInitialized) return;
+        boolean first = !vibrancyInitialized;
+        vibrancyInitialized = true;
+        lastQuantized = quantized;
+        // meshes built before the first tick of a session don't exist yet, so no rebuild needed
+        if (first || !ColoredLightEngine.isEnabled()) return;
+        ColoredLightEngine engine = ((LevelAttachments) level).colorfullighting$getEngine();
+        if (engine == null || mc.levelRenderer == null) return;
+        // Only the sections that actually hold colour carry a stale baked tint. Marking them
+        // dirty re-meshes them in the background (old mesh stays until the new one is ready),
+        // unlike allChanged() which drops every mesh at once and flashes the whole world.
+        me.erykczy.colorfullighting.ColorfulLighting.LOGGER.info(
+                "[CL nvidium] night vibrancy crossed {} -> re-meshing colored sections to update baked tints", quantized);
+        engine.forEachPopulatedSection(pos -> mc.levelRenderer.setSectionDirty(
+                SectionPos.x(pos), SectionPos.y(pos), SectionPos.z(pos)));
+    }
 
     /** Wraps Nvidium's chunk vertex encoder; called from {@code NvidiumCompactChunkVertexMixin}. */
     public static ChunkVertexEncoder wrapEncoder(ChunkVertexEncoder original) {
+        active = true;
         return (ptr, material, vertex, sectionIndex) -> {
             int light = vertex.light;
             if (!CompatPackedLight.isColored(light)) {
@@ -73,7 +133,7 @@ public final class NvidiumCompat {
             int color = vertex.color;
             vertex.light = CompatPackedLight.toVanilla(light);
             if (max8 > 0 && (red8 < max8 || green8 < max8 || blue8 < max8)) {
-                float base = AMBIENT_FLOOR + SKY_WASH_STRENGTH * (sky8 / 255.0f);
+                float base = AMBIENT_FLOOR + SKY_WASH_STRENGTH * (sky8 / 255.0f) * (1.0f - bakedVibrancy);
                 float denom = base + brightness(max8);
                 vertex.color = scaleRgb(color,
                         (base + brightness(red8)) / denom,

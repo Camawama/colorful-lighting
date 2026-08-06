@@ -722,6 +722,14 @@ public class ColoredLightEngine {
     }
 
     /**
+     * Visits every section that currently holds colour data. Used by the Nvidium compat to
+     * re-mesh only the sections whose baked tint went stale, instead of the whole world.
+     */
+    public void forEachPopulatedSection(java.util.function.LongConsumer action) {
+        storage.forEachPopulatedSection(action);
+    }
+
+    /**
      * Whether a section's light data is trustworthy enough to remember for DH LODs: only inner
      * view-area chunks are fully propagated. Border chunks hold partial spill-in, and a chunk on
      * the trailing edge of a moving view area can get re-propagated with its neighbours already
