@@ -222,9 +222,10 @@ final class DhCompatImpl {
             if (liveEngine == null) return;
             for (long pos : positions) {
                 ColoredLightSection light = liveEngine.dhGetLightSection(pos);
-                if (light == null) continue; // left the view area; keep what we remembered
-                DhColorCache.Entry entry = DhColorCache.buildEntry(light, liveEngine.dhGetDarknessSection(pos));
-                cache.store(pos, entry);
+                ColoredLightSection darkness = liveEngine.dhGetDarknessSection(pos);
+                if (light == null && darkness == null) continue; // left the view area; keep what we remembered
+                // darkness matters even with zero net light: absorbers (end portals) must darken LODs
+                cache.store(pos, DhColorCache.buildEntry(light, darkness));
             }
             cache.pruneIfNeeded(SectionPos.x(playerSection), SectionPos.z(playerSection));
         });

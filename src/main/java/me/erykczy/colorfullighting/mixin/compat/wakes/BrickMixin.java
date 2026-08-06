@@ -30,30 +30,30 @@ public class BrickMixin {
     private int redirectGetPixelRGBA(NativeImage lightPixels, int x, int y) {
         if (ColoredLightEngine.isEnabled()) {
             int light = this.colorful_lighting$lastLightCoordinate;
-            
+
             // Check if the light value is actually a packed colored light value
             if ((light & 0xF0000000) != 0) {
                 PackedLightData data = PackedLightData.unpackData(light);
                 int r = data.red8;
                 int g = data.green8;
                 int b = data.blue8;
-                
+
                 // Get skylight color from the light map
                 // We use block light 0 (x=0) and the skylight level from our data (y=skyLight4)
                 int skyLightColor = lightPixels.getPixelRGBA(0, data.skyLight4);
-                
+
                 // Unpack skylight color (ABGR)
                 int skyR = skyLightColor & 0xFF;
                 int skyG = (skyLightColor >> 8) & 0xFF;
                 int skyB = (skyLightColor >> 16) & 0xFF;
-                
+
                 // Add skylight to block light
                 r = Math.min(255, r + skyR);
                 g = Math.min(255, g + skyG);
                 b = Math.min(255, b + skyB);
 
                 int a = 255; // Full alpha for the pixel
-                
+
                 // NativeImage expects ABGR
                 return (a << 24) | (b << 16) | (g << 8) | r;
             }

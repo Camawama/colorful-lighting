@@ -79,23 +79,21 @@ void main()
                 : inFar ? texture(uClVolumeFar, farCoord)
                 : vec4(0.0);
 
-    // Alpha is a presence mask; empty texels are (0,0,0,0). The HUE uses the un-premultiplied
-    // colour (dividing by alpha undoes the darkening linear filtering causes against empty
-    // texels), so it stays true across fade ramps.
-    float presence = stored.a;
+    // Alpha band: 0 = nothing remembered, ~0.5 = remembered, up to 1.0 = remembered + absorbing.
+    // Presence is the band scaled back to 0..1; a remembered texel filtering against an empty
+    // neighbour ramps 0.5 -> 0 and never reaches the absorption band, so data frontiers cannot
+    // fake absorption. The HUE uses the un-premultiplied colour (dividing by presence undoes the
+    // darkening linear filtering causes against empty texels), so it stays true across fade ramps.
+    float presence = clamp(stored.a * 2.0, 0.0, 1.0);
     vec3 net = presence > 0.001 ? stored.rgb / presence : vec3(0.0);
     float netPeak = max(net.r, max(net.g, net.b));
     vec3 hue = netPeak > 0.001 ? net / netPeak : vec3(1.0);
 
-    // Tint strength is the remembered colour's SATURATION, not its brightness. The far volume
-    // averages a whole section into one texel, so the half of a light that spills into the next
-    // section is remembered dim — keying the tint on brightness snapped that half to white and
-    // visibly cut coloured light fields in two at section boundaries. Saturation keeps a dim
-    // coloured fringe coloured, while white/near-white light still gets no tint (its saturation
-    // is ~0), same as before.
-    float sat = netPeak > 0.001 ? (netPeak - min(net.r, min(net.g, net.b))) / netPeak : 0.0;
-    float colorWeight = smoothstep(0.05, 0.5, presence);
-    vec3 tint = mix(vec3(1.0), hue, clamp(sat * 2.0, 0.0, 1.0) * colorWeight);
+    // The hue is used as-is (no saturation weighting): with the channelwise neutral-curve
+    // formula below, a white hue is already neutral and a near-white hue (the "vanilla" colour,
+    // RGB 230/225/218) keeps its subtle warmth — a saturation wash flattened it to pure white.
+    float colorWeight = smoothstep(0.1, 1.0, presence);
+    vec3 tint = mix(vec3(1.0), hue, colorWeight);
 
     // Lightmap axes: u = block light, v = sky light (MC's layout). DH's standard.vert names the
     // meta nibbles the other way around ("skyLight" = high nibble) but stays self-consistent; in
@@ -103,10 +101,15 @@ void main()
     // sky lookup on the block axis and painted black patches wherever colour was remembered.
     const float LIGHT0 = 0.5 / 16.0;
 
-    // DH bakes LOD block light lazily: LODs fresh from a chunk conversion (or generated far away)
-    // can be missing whole swathes of light until DH re-bakes them, which reads as jagged dark
-    // cut-offs while flying. The colour memory also knows the light LEVEL, so lift the LOD's block
-    // light to at least the remembered level; DH's own baked value wins wherever it exists.
+    // Where the memory is confident, the remembered level IS the LOD's block light. DH bakes LOD
+    // light per chunk per vertex, which cuts light fields flat at chunk boundaries and bleeds
+    // through thin occluders like closed doors (both verified with DH alone, no CL). The colour
+    // memory holds the engine's true net result — shape, blocking, and absorption included — so
+    // trusting it outright replaces those artifacts with the real light field at the volume's
+    // resolution. DH's own bake only shows through where nothing is remembered (colorWeight
+    // fades to it at memory frontiers). This subsumes the earlier "lift" and absorber cap:
+    // missing bakes are filled, stale bakes are corrected DOWN too, and absorbed areas render
+    // dark simply because their remembered net level is dark.
     //
     // The level uses the PREMULTIPLIED peak, unlike the hue: it must FADE across the filter ramp
     // into unremembered space. The un-premultiplied value held the source's full brightness across
@@ -115,13 +118,21 @@ void main()
     // peak 0..1 maps back to a light level: stored bytes are nibble*17, so nibble/16 = peak*0.9375.
     float peak = max(stored.r, max(stored.g, stored.b));
     float rememberedLevel = clamp(peak * 0.9375 + LIGHT0, 0.0, 1.0);
-    float blockCoord = max(vertexLightCoord.x, rememberedLevel * colorWeight);
+    float blockCoord = mix(vertexLightCoord.x, rememberedLevel, colorWeight);
 
     vec3 combined = texture(uLightMap, vec2(blockCoord, vertexLightCoord.y)).rgb;
     vec3 skyOnly = texture(uLightMap, vec2(LIGHT0, vertexLightCoord.y)).rgb;
-    vec3 blockOnly = texture(uLightMap, vec2(blockCoord, LIGHT0)).rgb;
 
-    vec3 colored = max(skyOnly, blockOnly * tint);
+    // Match the in-world core shaders: they apply block light CHANNELWISE through the lightmap's
+    // red curve (a neutral brightness ramp), not by tinting the warm vanilla block colour — that
+    // is why a pure white colored light looks white in-world. Multiplying the warm lightmap by the
+    // hue instead rendered white light orange on LODs. Per channel, sample the neutral curve at
+    // that channel's own level (hue-scaled), then composite the same way the core shader does.
+    vec3 blockColored = vec3(
+        texture(uLightMap, vec2(mix(LIGHT0, blockCoord, tint.r), LIGHT0)).r,
+        texture(uLightMap, vec2(mix(LIGHT0, blockCoord, tint.g), LIGHT0)).r,
+        texture(uLightMap, vec2(mix(LIGHT0, blockCoord, tint.b), LIGHT0)).r);
+    vec3 colored = skyOnly + blockColored * max(0.1, 1.0 - skyOnly.r);
     vec3 light = mix(combined, colored, colorWeight);
 
     fragColor = vec4(light, 1.0) * vertexAlbedo;

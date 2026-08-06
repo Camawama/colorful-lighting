@@ -34,22 +34,27 @@ import java.util.zip.GZIPOutputStream;
  * thread (volume rebuild) via the concurrent map. Load/save also run on the worker.
  */
 public final class DhColorCache {
-    /** 4x4x4 texels per section, 3 bytes each. */
+    /** 4x4x4 texels per section, 4 bytes each (net RGB + absorption). */
     public static final int MIP_TEXELS = 64;
-    public static final int MIP_BYTES = MIP_TEXELS * 3;
-    /** ~26MB of RAM/disk at worst; beyond this the farthest sections from the player are dropped. */
+    public static final int MIP_BYTES = MIP_TEXELS * 4;
+    /** ~34MB of RAM/disk at worst; beyond this the farthest sections from the player are dropped. */
     public static final int MAX_SECTIONS = 131_072;
     private static final int MAGIC = 0x434C4432; // "CLD2"
     /**
-     * v2: mip clusters hold the dominant (most colorful) block instead of an average, and captures
-     * are inner-area-only. Old files may carry averaged or clipped data, so a version bump discards
-     * them and everything re-captures clean.
+     * v3: each cluster's RGB is the dominant (most colorful) block's HUE scaled to the cluster's
+     * AVERAGE net level (the dominant block's own level dilated light fields toward the 4-block
+     * grid, visibly skewing a small diamond's corners), plus a 4th byte of absorption (darkness
+     * peak) so absorbers (end portals etc.) can darken LODs. A version bump discards old files.
      */
-    private static final int FORMAT_VERSION = 2;
+    private static final int FORMAT_VERSION = 3;
 
     /** Immutable snapshot of one section's remembered colour. */
     public static final class Entry {
-        /** RGB888 per 4x4x4-block cluster, indexed {@code (y>>2)<<4 | (z>>2)<<2 | (x>>2)}, each times 3. */
+        /**
+         * 4 bytes per 4x4x4-block cluster, indexed {@code (y>>2)<<4 | (z>>2)<<2 | (x>>2)}, each
+         * times 4: net RGB (dominant hue at the cluster's average level) plus absorption
+         * (darkness peak times 17).
+         */
         public final byte[] mip;
         /**
          * The section's colour for the coarse far volume (one texel per section). The HUE is the
@@ -58,19 +63,27 @@ public final class DhColorCache {
          * distance; white light is "vanilla" anyway, so a real colour must always win over it
          * (falls back to the brightest cluster when the whole section is white/gray light).
          *
-         * <p>The BRIGHTNESS is the section's average level (mean of the mip cells' peaks, unlit
+         * <p>The BRIGHTNESS is the section's average level (mean of the mip cells' levels, unlit
          * cells included), NOT the dominant cluster's own. The shader uses the sampled brightness
          * as a floor under DH's baked block light, and lifting a whole 16-block section (plus its
          * filtering neighbourhood) to the brightest source's level made every distant LOD with a
          * light in it glow at full intensity; the average gives the section's aggregate glow.
          */
         public final byte farR, farG, farB;
+        /**
+         * The section's absorption for the far volume: the strongest cluster's, not the average.
+         * Absorbers are compact (an end portal is 25 blocks in a 4096-block section), so an
+         * average would erase them; overshoot is benign because the shader only uses absorption
+         * to cap DH's baked light down to the remembered net level, a no-op where they agree.
+         */
+        public final byte farAbsorption;
 
-        Entry(byte[] mip, int farR, int farG, int farB) {
+        Entry(byte[] mip, int farR, int farG, int farB, int farAbsorption) {
             this.mip = mip;
             this.farR = (byte) farR;
             this.farG = (byte) farG;
             this.farB = (byte) farB;
+            this.farAbsorption = (byte) farAbsorption;
         }
 
         static Entry fromMip(byte[] mip) {
@@ -78,25 +91,28 @@ public final class DhColorCache {
             int bestChroma = -1;
             int bestPeak = -1;
             int levelSum = 0;
+            int maxAbsorption = 0;
             for (int i = 0; i < MIP_TEXELS; ++i) {
-                int r = mip[i * 3] & 0xFF, g = mip[i * 3 + 1] & 0xFF, b = mip[i * 3 + 2] & 0xFF;
+                int r = mip[i * 4] & 0xFF, g = mip[i * 4 + 1] & 0xFF, b = mip[i * 4 + 2] & 0xFF;
                 int peak = Math.max(r, Math.max(g, b));
                 int chroma = peak - Math.min(r, Math.min(g, b));
                 levelSum += peak;
+                maxAbsorption = Math.max(maxAbsorption, mip[i * 4 + 3] & 0xFF);
                 if (chroma > bestChroma || (chroma == bestChroma && peak > bestPeak)) {
                     bestChroma = chroma;
                     bestPeak = peak;
                     best = i;
                 }
             }
-            int domR = mip[best * 3] & 0xFF, domG = mip[best * 3 + 1] & 0xFF, domB = mip[best * 3 + 2] & 0xFF;
+            int domR = mip[best * 4] & 0xFF, domG = mip[best * 4 + 1] & 0xFF, domB = mip[best * 4 + 2] & 0xFF;
             int domPeak = Math.max(domR, Math.max(domG, domB));
             int avgLevel = levelSum / MIP_TEXELS;
-            if (domPeak == 0) return new Entry(mip, 0, 0, 0);
+            if (domPeak == 0) return new Entry(mip, 0, 0, 0, maxAbsorption);
             return new Entry(mip,
                     Math.round(domR * (float) avgLevel / domPeak),
                     Math.round(domG * (float) avgLevel / domPeak),
-                    Math.round(domB * (float) avgLevel / domPeak));
+                    Math.round(domB * (float) avgLevel / domPeak),
+                    maxAbsorption);
         }
     }
 
@@ -125,42 +141,66 @@ public final class DhColorCache {
      */
     @Nullable
     public static Entry buildEntry(@Nullable ColoredLightSection light, @Nullable ColoredLightSection darkness) {
-        if (light == null) return null;
-        // Each 4x4x4 cluster keeps its dominant (most colorful, then brightest) block rather than an
-        // average. Only the HUE of a cluster is ever used (brightness comes from the LOD's own baked
-        // block light), and averaging over mostly-unlit blocks floored faint fringe clusters to
-        // zero, which cut light fields off jaggedly at their edges on LODs.
+        if (light == null && darkness == null) return null;
+        // Each 4x4x4 cluster keeps its dominant (most colorful, then brightest) block's HUE at the
+        // cluster's AVERAGE net level. The hue must be a single block's (averaging RGB over
+        // mostly-unlit blocks washed fringe hues to gray), but the LEVEL must be the average: the
+        // dominant block's own level dilated every light field toward the 4-block cluster grid,
+        // which visibly skewed a small diamond's corners depending on where the source sat in its
+        // cluster. Absorption (darkness peak) is captured per cluster so absorbers darken LODs.
         byte[] mip = null;
         int[] bestChroma = null;
         int[] bestPeak = null;
+        int[] domR = null, domG = null, domB = null;
+        int[] levelSum = null; // per cluster, sum of net peaks over all 64 blocks (nibble units)
         for (int idx = 0; idx < 4096; ++idx) {
-            int l = light.getPacked(idx);
-            if (l == 0) continue;
+            int l = light == null ? 0 : light.getPacked(idx);
             int d = darkness == null ? 0 : darkness.getPacked(idx);
-            int r = Math.max(0, ((l >>> 8) & 0xF) - ((d >>> 8) & 0xF));
-            int g = Math.max(0, ((l >>> 4) & 0xF) - ((d >>> 4) & 0xF));
-            int b = Math.max(0, (l & 0xF) - (d & 0xF));
-            if ((r | g | b) == 0) continue;
+            if (l == 0 && d == 0) continue;
             if (mip == null) {
                 mip = new byte[MIP_BYTES];
                 bestChroma = new int[MIP_TEXELS];
                 bestPeak = new int[MIP_TEXELS];
+                domR = new int[MIP_TEXELS];
+                domG = new int[MIP_TEXELS];
+                domB = new int[MIP_TEXELS];
+                levelSum = new int[MIP_TEXELS];
                 java.util.Arrays.fill(bestChroma, -1);
             }
-            int peak = Math.max(r, Math.max(g, b));
-            int chroma = peak - Math.min(r, Math.min(g, b));
             // getColorIndex is y<<8 | z<<4 | x
             int x = idx & 15, z = (idx >>> 4) & 15, y = (idx >>> 8) & 15;
             int mi = (y >> 2) << 4 | (z >> 2) << 2 | (x >> 2);
+
+            int dr = (d >>> 8) & 0xF, dg = (d >>> 4) & 0xF, db = d & 0xF;
+            int dPeak = Math.max(dr, Math.max(dg, db));
+            int storedAbsorption = mip[mi * 4 + 3] & 0xFF;
+            if (dPeak * 17 > storedAbsorption) mip[mi * 4 + 3] = (byte) (dPeak * 17);
+
+            int r = Math.max(0, ((l >>> 8) & 0xF) - dr);
+            int g = Math.max(0, ((l >>> 4) & 0xF) - dg);
+            int b = Math.max(0, (l & 0xF) - db);
+            if ((r | g | b) == 0) continue;
+            int peak = Math.max(r, Math.max(g, b));
+            int chroma = peak - Math.min(r, Math.min(g, b));
+            levelSum[mi] += peak;
             if (chroma > bestChroma[mi] || (chroma == bestChroma[mi] && peak > bestPeak[mi])) {
                 bestChroma[mi] = chroma;
                 bestPeak[mi] = peak;
-                mip[mi * 3] = (byte) (r * 17); // nibble 0..15 -> 0..255
-                mip[mi * 3 + 1] = (byte) (g * 17);
-                mip[mi * 3 + 2] = (byte) (b * 17);
+                domR[mi] = r;
+                domG[mi] = g;
+                domB[mi] = b;
             }
         }
         if (mip == null) return null;
+        for (int mi = 0; mi < MIP_TEXELS; ++mi) {
+            if (bestPeak[mi] <= 0) continue;
+            // Average in the fine 0..255 scale, floored to 1, so faint fringes (one level-1 block
+            // would be 17/64) survive instead of flooring to zero and cutting glow edges off.
+            int avgLevel = Math.max(1, levelSum[mi] * 17 / 64);
+            mip[mi * 4] = (byte) Math.min(255, Math.round(domR[mi] * (float) avgLevel / bestPeak[mi]));
+            mip[mi * 4 + 1] = (byte) Math.min(255, Math.round(domG[mi] * (float) avgLevel / bestPeak[mi]));
+            mip[mi * 4 + 2] = (byte) Math.min(255, Math.round(domB[mi] * (float) avgLevel / bestPeak[mi]));
+        }
         return Entry.fromMip(mip);
     }
 

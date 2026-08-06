@@ -12,8 +12,9 @@ import java.util.Map;
 
 /**
  * Two moving 3D textures holding the remembered light colour around the camera, sampled by the DH
- * terrain shader override. RGBA8: RGB is the cached net colour, A is a presence mask (0 = the cache
- * knows nothing there, the shader falls back to plain vanilla LOD lighting).
+ * terrain shader override. RGBA8: RGB is the cached net colour, A encodes presence and absorption
+ * (0 = the cache knows nothing there and the shader falls back to plain vanilla LOD lighting,
+ * ~128 = remembered, above that = remembered plus light absorption).
  *
  * <p>Two levels because one dense volume cannot span DH render distances: a near volume at 4
  * blocks/texel covering the first LOD ring in detail, and a far volume at 16 blocks/texel (one texel
@@ -139,21 +140,27 @@ public final class DhColorVolume {
                 }
                 ++written;
                 DhColorCache.Entry entry = mapEntry.getValue();
+                // Alpha encodes presence AND absorption in one band: 0 = nothing remembered,
+                // ~128 = remembered, up to 255 = remembered + fully absorbing. Crucially this
+                // keeps absorbed-dark sections registered as REMEMBERED (presence saturates at
+                // 128), so the shader's remembered-level authority renders them dark instead of
+                // falling back to DH's baked glow. The band above 128 is currently informational
+                // (the shader stopped decoding it once the remembered level became authoritative).
                 if (useMip) {
                     for (int mi = 0; mi < DhColorCache.MIP_TEXELS; ++mi) {
                         int mx = mi & 3, mz = (mi >>> 2) & 3, my = (mi >>> 4) & 3;
                         int index = (((tz + mz) * level.size + (ty + my)) * level.size + (tx + mx)) * 4;
-                        staging.put(index, entry.mip[mi * 3]);
-                        staging.put(index + 1, entry.mip[mi * 3 + 1]);
-                        staging.put(index + 2, entry.mip[mi * 3 + 2]);
-                        staging.put(index + 3, (byte) 0xFF);
+                        staging.put(index, entry.mip[mi * 4]);
+                        staging.put(index + 1, entry.mip[mi * 4 + 1]);
+                        staging.put(index + 2, entry.mip[mi * 4 + 2]);
+                        staging.put(index + 3, (byte) (128 + ((entry.mip[mi * 4 + 3] & 0xFF) >> 1)));
                     }
                 } else {
                     int index = ((tz * level.size + ty) * level.size + tx) * 4;
                     staging.put(index, entry.farR);
                     staging.put(index + 1, entry.farG);
                     staging.put(index + 2, entry.farB);
-                    staging.put(index + 3, (byte) 0xFF);
+                    staging.put(index + 3, (byte) (128 + ((entry.farAbsorption & 0xFF) >> 1)));
                 }
             }
         }
