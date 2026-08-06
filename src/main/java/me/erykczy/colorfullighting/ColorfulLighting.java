@@ -85,6 +85,11 @@ public class ColorfulLighting
             me.erykczy.colorfullighting.compat.valkyrienskies.VsCompat.init();
             LOGGER.info("Valkyrien Skies detected!");
         }
+        if (ModList.get().isLoaded("immersive_portals") || ModList.get().isLoaded("imm_ptl_core")) {
+            // The remote-level light regions themselves are always on (they are inert without a
+            // second client level); this is just detection logging.
+            LOGGER.info("Immersive Portals detected! Colored light will follow dimensions seen through portals.");
+        }
         if (ModList.get().isLoaded("nvidium") || ModList.get().isLoaded("acedium")) {
             LOGGER.info("Nvidium/Acedium detected! Terrain light will be converted in their vertex encoder.");
         }

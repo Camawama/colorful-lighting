@@ -106,6 +106,10 @@ public class ClientEventListener {
         // Tracks night vibrancy for the tint baked into Nvidium/Acedium meshes (no-op without them)
         me.erykczy.colorfullighting.compat.nvidium.NvidiumCompat.clientTick();
 
+        // Mirrors loaded chunks of non-current levels (Immersive Portals remote dimensions) into
+        // their engines as light regions; no-op when only the player's own level exists
+        me.erykczy.colorfullighting.compat.immersiveportals.ImmersivePortalsCompat.clientTick(Minecraft.getInstance());
+
         if (ColorfulLighting.clientAccessor == null) return;
         var player = ColorfulLighting.clientAccessor.getPlayer();
         if (player == null) return;
@@ -121,6 +125,17 @@ public class ClientEventListener {
         if (!event.getLevel().isClientSide()) return;
         if (event.getChunk() instanceof LevelChunk chunk) {
 	        ((LevelAttachments) event.getLevel()).colorfullighting$getNbtCache().onChunkLoaded(chunk);
+            if (chunk.getLevel() instanceof ClientLevel clientLevel) {
+                me.erykczy.colorfullighting.compat.immersiveportals.ImmersivePortalsCompat.onChunkLoad(clientLevel, chunk.getPos());
+            }
+        }
+    }
+
+    @SubscribeEvent
+    public void onChunkUnload(ChunkEvent.Unload event) {
+        if (!event.getLevel().isClientSide()) return;
+        if (event.getChunk() instanceof LevelChunk chunk && chunk.getLevel() instanceof ClientLevel clientLevel) {
+            me.erykczy.colorfullighting.compat.immersiveportals.ImmersivePortalsCompat.onChunkUnload(clientLevel, chunk.getPos());
         }
     }
 
@@ -141,6 +156,9 @@ public class ClientEventListener {
             me.erykczy.colorfullighting.compat.distanthorizons.DhCompat.onLevelUnload(level);
         }
 	    ((LevelAttachments) event.getLevel()).colorfullighting$getNbtCache().clear();
+        if (event.getLevel() instanceof net.minecraft.world.level.Level unloadedLevel) {
+            me.erykczy.colorfullighting.compat.immersiveportals.ImmersivePortalsCompat.onLevelUnload(unloadedLevel);
+        }
         BeaconEffectSync.clear();
 		// I think this is redundant
         ((LevelAttachments) event.getLevel()).colorfullighting$getEngine().reset();

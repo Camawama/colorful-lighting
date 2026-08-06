@@ -69,12 +69,24 @@ public class ColoredLightEngine {
 	protected volatile boolean running = true;
 	private ViewArea viewArea = new ViewArea();
     /**
-     * Extra light regions beyond the player's view area, keyed by owner (e.g. a Valkyrien Skies ship
-     * id). Written and read on the client thread only, like viewArea. Regions are assumed to lie far
-     * from the view area and from each other (VS chunk claims are disjoint), so overlap is only
-     * guarded where stored data would be clobbered.
+     * Extra light regions beyond the player's view area, keyed by owner (a Valkyrien Skies ship id,
+     * or a remote-level chunk cell — see the key namespaces below). Written and read on the client
+     * thread only, like viewArea. Regions may touch each other and the view area (adjacent cells
+     * share border columns); overlap is safe because {@link ColoredLightStorage#addSection} never
+     * replaces an existing section.
      */
     private final Map<Long, LightRegion> extraRegions = new HashMap<>();
+
+    /**
+     * Region keys carry their owner in the top two bits so independent owners can each reconcile
+     * their own regions every tick (see {@link #syncExtraRegions(long, Map)}) without removing one
+     * another's.
+     */
+    public static final long REGION_NAMESPACE_MASK = 0xC000_0000_0000_0000L;
+    /** Default namespace: Valkyrien Skies ship ids (nonnegative, so their top bits are clear). */
+    public static final long REGION_NAMESPACE_DEFAULT = 0L;
+    /** Loaded-chunk cells of levels the player is not in (Immersive Portals compat). */
+    public static final long REGION_NAMESPACE_REMOTE_LEVEL = 0x4000_0000_0000_0000L;
     /**
      * The extra regions' areas, republished on every change for threads that must not touch the map:
      * the propagator's ChunkOrder reads this to prioritise region chunks the way it prioritises
@@ -463,16 +475,27 @@ public class ColoredLightEngine {
     public record LightRegion(ViewArea area, Set<ChunkPos> chunksToQueue) {}
 
     /**
-     * Reconciles the extra regions with {@code desired}. Callers may pass the same LightRegion
-     * instances every tick; unchanged regions are skipped by identity before equality. Client thread
-     * only, like {@link #updateViewArea}.
+     * Reconciles the extra regions in {@link #REGION_NAMESPACE_DEFAULT} with {@code desired}.
+     * Callers may pass the same LightRegion instances every tick; unchanged regions are skipped by
+     * identity before equality. Client thread only, like {@link #updateViewArea}.
      */
     public void syncExtraRegions(Map<Long, LightRegion> desired) {
+        syncExtraRegions(REGION_NAMESPACE_DEFAULT, desired);
+    }
+
+    /**
+     * Same as {@link #syncExtraRegions(Map)} but reconciles only the regions whose keys carry the
+     * given namespace bits, so independent owners (VS ships, remote-level cells) can each sync
+     * every tick without wiping the other's regions. Every key in {@code desired} must carry the
+     * namespace.
+     */
+    public void syncExtraRegions(long namespace, Map<Long, LightRegion> desired) {
         if (!enabled) return;
         if (extraRegions.isEmpty() && desired.isEmpty()) return;
 
         boolean changed = false;
         for (Long key : List.copyOf(extraRegions.keySet())) {
+            if ((key & REGION_NAMESPACE_MASK) != namespace) continue;
             LightRegion target = desired.get(key);
             LightRegion current = extraRegions.get(key);
             if (current == target || current.equals(target)) continue;
@@ -530,7 +553,7 @@ public class ColoredLightEngine {
                     for (int x = newArea.minX; x <= newArea.maxX; ++x) {
                         for (int z = newArea.minZ; z <= newArea.maxZ; ++z) {
                             if (oldArea != null && oldArea.contains(x, z)) continue;
-                            if (viewArea.contains(x, z)) continue; // addSection overwrites; never clobber the view area
+                            if (viewArea.contains(x, z)) continue; // already held by the view area
                             for (int y = level.getMinSectionY(); y <= level.getMaxSectionY(); y++) {
                                 long sectionPos = SectionPos.asLong(x, y, z);
                                 storage.addSection(sectionPos);
@@ -680,8 +703,12 @@ public class ColoredLightEngine {
 
         // Hoisted out of the loop below: it runs once per dirty section per frame, and flying through
         // fresh terrain makes that thousands of iterations. ModList.isLoaded hashes a string every call.
+        // The accessor is the current dimension's renderer, so it only applies when this engine's
+        // level IS the current one — a remote level (Immersive Portals) must not schedule its
+        // sections there; its own renderer is reached through level.setSectionDirty below.
         SodiumWorldRendererAccessor sodiumRenderer = null;
-        if (SodiumCompat.isSodiumLoaded() && Minecraft.getInstance().levelRenderer instanceof SodiumWorldRendererAccessor accessor) {
+        if (SodiumCompat.isSodiumLoaded() && Minecraft.getInstance().level == level.getLevel()
+                && Minecraft.getInstance().levelRenderer instanceof SodiumWorldRendererAccessor accessor) {
             sodiumRenderer = accessor;
         }
         boolean flywheelTracking = FlywheelCompat.isAvailable();

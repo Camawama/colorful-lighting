@@ -69,8 +69,15 @@ public class ColoredLightStorage {
         return map.get(sectionPos);
     }
 
+    /**
+     * Adds an empty section unless one already exists. Never replaces: the view area and extra
+     * region rectangles may overlap (adjacent remote-level cells share border columns, a region can
+     * overlap a stale view area), and whichever owner adds a column second must not wipe light
+     * already propagated there. A caller that needs a fresh section removes it first (see
+     * LightPropagator's region rebuild).
+     */
     public void addSection(long sectionPos) {
-        map.put(sectionPos, new ColoredLightSection());
+        map.computeIfAbsent(sectionPos, pos -> new ColoredLightSection());
     }
 
     public void removeSection(long sectionPos) {
