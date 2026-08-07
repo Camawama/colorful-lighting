@@ -125,8 +125,18 @@ public final class DhColorCache {
     }
 
     private final ConcurrentHashMap<Long, Entry> sections = new ConcurrentHashMap<>();
-    /** Bumped on every content change; the render volume rebuilds when it moves. */
+    /** Bumped on every content change. */
     private final AtomicInteger version = new AtomicInteger();
+    /**
+     * Bumped only on BULK changes (load, prune) where patching section-by-section would be
+     * pointless; the render volume does a full rebuild when this moves. Single-section stores
+     * land in {@link #dirtySections} instead and are patched incrementally — re-uploading all
+     * three 28MB volume textures on every store ran the rebuild throttle at its ceiling and
+     * dropped frames four times a second (2026-08-07 profile).
+     */
+    private final AtomicInteger structureVersion = new AtomicInteger();
+    /** Sections changed since the volume last drained; written by the worker, drained render-side. */
+    private final java.util.Set<Long> dirtySections = ConcurrentHashMap.newKeySet();
     private final Path file;
     private volatile boolean dirtySinceSave = false;
 
@@ -135,11 +145,33 @@ public final class DhColorCache {
     }
 
     public int getVersion() { return version.get(); }
+    public int getStructureVersion() { return structureVersion.get(); }
     public int getSectionCount() { return sections.size(); }
     public Path getFile() { return file; }
 
     /** Iteration for the volume rebuild (render thread); weakly consistent, which is fine here. */
     public Iterable<Map.Entry<Long, Entry>> entries() { return sections.entrySet(); }
+
+    /** Point lookup for incremental volume patches (render thread). */
+    @Nullable
+    public Entry getEntry(long sectionPos) { return sections.get(sectionPos); }
+
+    /**
+     * Hands every section changed since the last drain to {@code consumer} and unmarks it.
+     * Render thread. A store racing the drain either lands in this batch or stays marked for
+     * the next one; nothing is lost.
+     */
+    public void drainDirtySections(java.util.function.LongConsumer consumer) {
+        var it = dirtySections.iterator();
+        while (it.hasNext()) {
+            long pos = it.next();
+            it.remove();
+            consumer.accept(pos);
+        }
+    }
+
+    /** Discards pending dirty marks; called before a full volume rebuild, which covers them. */
+    public void clearDirtySections() { dirtySections.clear(); }
 
     /**
      * Builds the downsampled entry for one section from the engine's live storage, or null when the
@@ -223,6 +255,7 @@ public final class DhColorCache {
         }
         if (changed) {
             version.incrementAndGet();
+            dirtySections.add(sectionPos);
             dirtySinceSave = true;
         }
     }
@@ -242,6 +275,7 @@ public final class DhColorCache {
             sections.remove(byDistance.get(i)[1]);
         }
         version.incrementAndGet();
+        structureVersion.incrementAndGet();
         dirtySinceSave = true;
         ColorfulLighting.LOGGER.info("[DH color cache] pruned {} far sections ({} kept)", toDrop, sections.size());
     }
@@ -263,6 +297,7 @@ public final class DhColorCache {
                 sections.put(pos, Entry.fromMip(mip));
             }
             version.incrementAndGet();
+            structureVersion.incrementAndGet();
             ColorfulLighting.LOGGER.info("[DH color cache] loaded {} remembered sections from {}", count, file.getFileName());
         } catch (Exception e) {
             ColorfulLighting.LOGGER.warn("[DH color cache] failed to load {}: {}", file, e.toString());

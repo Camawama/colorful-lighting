@@ -373,6 +373,11 @@ public final class DhTerrainColorShaderProgram implements IDhApiShaderProgram {
         }
     }
 
+    /** Sticky for the session; a failed program must never be re-bound (bind() would no-op and DH would draw nothing). */
+    boolean hasFailed() {
+        return failed;
+    }
+
     private void fail(String where, Throwable t) {
         if (!failed) {
             failed = true;

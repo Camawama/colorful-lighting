@@ -7,6 +7,7 @@ Planned
 - add Sable / Create Aeronautics compatibility alongside Valkyrien Skies where possible
 
 2026-08-07
+- fixed fps stutter with Distant Horizons colored LODs: light changes now patch the color volume incrementally instead of re-uploading all of it 4 times per second
 - fixed block break particles flashing uncolored for one frame near colored light sources with Async Particles installed
 - added a developer API for other mods (light sampling, dynamic light color providers, packed-format helpers, custom level integration; see docs/API.md)
 - fixed colored light updates stopping permanently (until /cl purge) when the light engine thread died; the engine now logs the crash and restarts itself

@@ -168,6 +168,10 @@ final class DhCompatImpl {
         if (enable && !shaderContractOk) {
             return "This Distant Horizons version's terrain shader differs from the supported one (DH 3.1.2); colored LOD lighting would misrender, staying off";
         }
+        if (enable && overrideProgram != null && overrideProgram.hasFailed()) {
+            // Re-binding would hand DH a program whose bind() no-ops, drawing no LODs at all.
+            return "Colored LOD lighting hit an error and is off for this session (see the log)";
+        }
         if (enable == overrideBound) {
             return enable ? "Colored LOD lighting already on" : "Colored LOD lighting already off";
         }
@@ -307,7 +311,8 @@ final class DhCompatImpl {
         // overrideThisFrame on it), so '/cl off' must actually unbind or LODs would stay colored;
         // '/cl on' rebinds automatically when the config wants DH colors.
         boolean want = me.erykczy.colorfullighting.common.ColorfulLightingConfig.dhLodColor()
-                && ColoredLightEngine.isEnabled() && apiUsable && shaderContractOk;
+                && ColoredLightEngine.isEnabled() && apiUsable && shaderContractOk
+                && (overrideProgram == null || !overrideProgram.hasFailed());
         if (want != overrideBound) {
             setOverrideEnabled(want);
         }
