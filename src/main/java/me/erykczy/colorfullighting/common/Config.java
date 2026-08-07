@@ -4,6 +4,7 @@ import com.google.gson.JsonElement;
 import me.erykczy.colorfullighting.common.accessors.BlockStateAccessor;
 import me.erykczy.colorfullighting.common.accessors.LevelAccessor;
 import me.erykczy.colorfullighting.common.accessors.mixin.LevelAttachments;
+import me.erykczy.colorfullighting.common.api.ApiProviderRegistry;
 import me.erykczy.colorfullighting.common.config.VariantList;
 import me.erykczy.colorfullighting.common.util.BiomeTint;
 import me.erykczy.colorfullighting.common.util.ColorRGB4;
@@ -141,6 +142,15 @@ public class Config {
                 return color.mul(emitter.overriddenBrightness4 < 0 ? lightEmission : emitter.overriddenBrightness4 / 15.0f);
             }
         }
+        // API providers: dynamic colors JSON cannot express. Run after explicit emitters.json
+        // config (user/pack intent wins) and before the automatic texture heuristic.
+        if (lightEmission > 0 && ApiProviderRegistry.hasBlockProviders()) {
+            ColorRGB4 providerColor = ApiProviderRegistry.getBlockColor(level.getLevel(), pos, blockState.getBlockState());
+            if (providerColor != null) {
+                return providerColor.mul(lightEmission);
+            }
+        }
+
         // unconfigured light source (typically modded): derive the color from its texture
         if (lightEmission > 0 && ColorfulLightingConfig.autoEmitterColors()) {
             return AutoEmitterColors.get(blockState.getBlockState(), level.getLevel(), pos).mul(lightEmission);

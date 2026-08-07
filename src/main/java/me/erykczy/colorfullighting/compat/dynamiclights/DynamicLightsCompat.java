@@ -566,6 +566,11 @@ public final class DynamicLightsCompat {
             }
         }
 
+        // API providers: dynamic entity colors JSON cannot express. Run after explicit
+        // entities.json config (user/pack intent wins) and before the built-in heuristics.
+        ColorRGB4 providerColor = me.erykczy.colorfullighting.common.api.ApiProviderRegistry.getEntityColor(entity);
+        if (providerColor != null) return providerColor;
+
         if (entity instanceof ItemEntity itemEntity) {
             ColorRGB4 color = resolveStackColor(itemEntity.getItem());
             if (color != null) return color;

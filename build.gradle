@@ -230,10 +230,26 @@ tasks.named('jar', Jar).configure {
     finalizedBy 'reobfJar'
 }
 
+// Thin API artifact: just the me.erykczy.colorfullighting.api package (classes + sources) for
+// mods that want a compile-time-only dependency. Most consumers can instead depend on the full
+// jar from CurseMaven/Modrinth with fg.deobf; see docs/API.md.
+tasks.register('apiJar', Jar) {
+    dependsOn tasks.named('compileJava')
+    archiveClassifier = 'api'
+    from(sourceSets.main.output) {
+        include 'me/erykczy/colorfullighting/api/**'
+    }
+    from(sourceSets.main.allJava) {
+        include 'me/erykczy/colorfullighting/api/**'
+    }
+}
+tasks.named('assemble').configure { dependsOn 'apiJar' }
+
 publishing {
     publications {
         register('mavenJava', MavenPublication) {
             artifact jar
+            artifact tasks.named('apiJar')
         }
     }
     repositories {

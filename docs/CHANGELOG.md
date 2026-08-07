@@ -7,6 +7,7 @@ Planned
 - add Sable / Create Aeronautics compatibility alongside Valkyrien Skies where possible
 
 2026-08-07
+- added a developer API for other mods (light sampling, dynamic light color providers, packed-format helpers, custom level integration; see docs/API.md)
 - fixed colored light updates stopping permanently (until /cl purge) when the light engine thread died; the engine now logs the crash and restarts itself
 - added "/cl debug queue" for light engine diagnostics
 - fixed particles rendering black in daylight and uncolored white near lights with Async Particles installed (this also fixes all the Pretty Rain weather particles)
