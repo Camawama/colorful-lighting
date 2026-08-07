@@ -33,6 +33,8 @@ public class LevelMixin implements LevelAttachments {
 	@Unique
 	VsCompat colorfullighting$vsCompat;
 	@Unique
+	me.erykczy.colorfullighting.compat.dynamiclights.DynamicLightsCompat colorfullighting$dynamicLights;
+	@Unique
 	BlockEntityNbtCache colorfullighting$nbtCache;
 	@Unique
 	FlywheelCompat colorfullighting$flywheelCompat;
@@ -54,6 +56,8 @@ public class LevelMixin implements LevelAttachments {
 		
 		// don't initialize CL if the level doesn't support colorful lighting
 		if (this instanceof CLSupportingLevel) {
+			// before the engine: the engine constructor caches this attachment for its sampling hot path
+			colorfullighting$dynamicLights = new me.erykczy.colorfullighting.compat.dynamiclights.DynamicLightsCompat();
 			colorfullighting$engine = ColoredLightEngine.create((Level) (Object) this, ColorfulLighting.clientAccessor);
 
 			if (VsCompat.isAvailable()) {
@@ -77,6 +81,11 @@ public class LevelMixin implements LevelAttachments {
 	@Override
 	public VsCompat colorfullighting$getVSCompat() {
 		return colorfullighting$vsCompat;
+	}
+
+	@Override
+	public me.erykczy.colorfullighting.compat.dynamiclights.DynamicLightsCompat colorfullighting$getDynamicLights() {
+		return colorfullighting$dynamicLights;
 	}
 	
 	@Override

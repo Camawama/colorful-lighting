@@ -159,6 +159,11 @@ public class LevelWrapper implements LevelAccessor, LevelAttachments {
 	public VsCompat colorfullighting$getVSCompat() {
 		return ((LevelAttachments) level).colorfullighting$getVSCompat();
 	}
+
+	@Override
+	public me.erykczy.colorfullighting.compat.dynamiclights.DynamicLightsCompat colorfullighting$getDynamicLights() {
+		return ((LevelAttachments) level).colorfullighting$getDynamicLights();
+	}
 	
 	@Override
 	public LevelAccessor colorfullighting$getAccessor() {

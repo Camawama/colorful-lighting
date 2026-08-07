@@ -27,6 +27,11 @@ public class WorldSliceMixin implements LevelAttachments {
 	public VsCompat colorfullighting$getVSCompat() {
 		return ((LevelAttachments) world).colorfullighting$getVSCompat();
 	}
+
+	@Override
+	public me.erykczy.colorfullighting.compat.dynamiclights.DynamicLightsCompat colorfullighting$getDynamicLights() {
+		return ((LevelAttachments) world).colorfullighting$getDynamicLights();
+	}
 	
 	@Override
 	public LevelAccessor colorfullighting$getAccessor() {

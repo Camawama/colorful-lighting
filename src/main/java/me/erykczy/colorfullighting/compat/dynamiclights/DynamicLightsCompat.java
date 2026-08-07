@@ -62,6 +62,13 @@ import java.util.concurrent.ConcurrentHashMap;
  *       and SodiumDynamicLightsMixin suppresses its vanilla-format brightness boost, which would
  *       corrupt the packed colored coords.</li>
  * </ul>
+ *
+ * <p>One instance per level (a {@link LevelAttachments} slot, like the other compats): several
+ * ClientLevels can be live at once (Immersive Portals), and a global snapshot let one dimension's
+ * entity lights tint another's samples at overlapping coordinates — and the entity-id keyed caches
+ * could collide across levels, since entity network ids are only unique per level. Mod detection
+ * and config-derived data stay static. The per-tick snapshot arrays remain volatile: they are read
+ * from chunk-build workers and the light-propagator thread.
  */
 public final class DynamicLightsCompat {
     /** LambDynamicLights falloff radius; matches SodiumDynamicLights so color aligns with its brightness. */
@@ -109,23 +116,24 @@ public final class DynamicLightsCompat {
 
     private record DynamicSource(double x, double y, double z, int luminance, ColorRGB4 color) {}
     private static final DynamicSource[] NO_SOURCES = new DynamicSource[0];
-    // written on the client thread each tick, read from chunk-build worker threads
-    private static volatile DynamicSource[] entitySources = NO_SOURCES;
+    // written on this level's tick, read from chunk-build worker threads
+    private volatile DynamicSource[] entitySources = NO_SOURCES;
 
     private record ColorSource(double x, double y, double z, ColorRGB4 color) {}
     private static final ColorSource[] NO_COLOR_SOURCES = new ColorSource[0];
-    // colored entities snapshotted each client tick, read from the light-propagator thread to color
+    // colored entities snapshotted each tick, read from the light-propagator thread to color
     // dynamic light blocks without ever touching the live (non-thread-safe) entity lists off-thread
-    private static volatile ColorSource[] blockColorSources = NO_COLOR_SOURCES;
+    private volatile ColorSource[] blockColorSources = NO_COLOR_SOURCES;
     // set once dynamic light blocks are known to exist, so vanilla worlds skip the per-tick color scan
-    private static volatile boolean trackBlockColors;
+    private volatile boolean trackBlockColors;
 
     /**
-     * Entity NBT serialized at most once per client tick, and only for entity types whose config has
+     * Entity NBT serialized at most once per tick, and only for entity types whose config has
      * an NBT rule. resolveEntityColor runs for every rendered entity, sometimes twice a tick, and
-     * Entity#saveWithoutId is far too expensive to repeat.
+     * Entity#saveWithoutId is far too expensive to repeat. Keyed by entity network id, which is
+     * only unique within one level — a reason this cache must not be global.
      */
-    private static final Map<Integer, CompoundTag> ENTITY_NBT = new HashMap<>();
+    private final Map<Integer, CompoundTag> entityNbtCache = new HashMap<>();
     private static final CompoundTag NO_NBT = new CompoundTag();
     private static boolean loggedEntitySaveFailure = false;
 
@@ -137,16 +145,14 @@ public final class DynamicLightsCompat {
      * clientTick rechecks these and re-propagates a block when the hue that would resolve now
      * differs. Written from the light-propagator thread, iterated on the client thread.
      */
-    private static final Map<BlockPos, Integer> shipMirrorHuesUsed = new ConcurrentHashMap<>();
+    private final Map<BlockPos, Integer> shipMirrorHuesUsed = new ConcurrentHashMap<>();
     private static final int SHIP_HUE_RECHECK_INTERVAL_TICKS = 10;
-    private static int recheckCounter;
+    private int recheckCounter;
 
     private static SodiumDynamicLightsHook sdlHook;
     private static boolean trackEntities;
     /** Last remesh anchor per tracked entity id, so terrain updates as sources move. Client thread only. */
-    private static Map<Integer, DynamicSource> trackedAnchors = new HashMap<>();
-
-    private DynamicLightsCompat() {}
+    private Map<Integer, DynamicSource> trackedAnchors = new HashMap<>();
 
     public static void init() {
         Set<Block> resolved = Collections.newSetFromMap(new java.util.IdentityHashMap<>());
@@ -177,13 +183,13 @@ public final class DynamicLightsCompat {
     }
 
     /**
-     * Refreshes the dynamic light sources for this tick: snapshots SodiumDynamicLights' tracked
-     * sources and/or scans luminous entities, into an immutable array so light sampling on
-     * chunk-build threads never touches live collections. Called once per client tick.
+     * Refreshes this level's dynamic light sources for the tick: snapshots SodiumDynamicLights'
+     * tracked sources and/or scans luminous entities, into an immutable array so light sampling on
+     * chunk-build threads never touches live collections. Called once per tick of this level.
      */
-    public static void clientTick(ClientLevel level) {
+    public void clientTick(ClientLevel level) {
 	    ColoredLightEngine engine = ((LevelAttachments) level).colorfullighting$getEngine();
-	    if (engine == null || !ColoredLightEngine.isEnabled() || level == null) {
+	    if (engine == null || !ColoredLightEngine.isEnabled()) {
             entitySources = NO_SOURCES;
             blockColorSources = NO_COLOR_SOURCES;
             trackedAnchors = new HashMap<>();
@@ -195,7 +201,7 @@ public final class DynamicLightsCompat {
 
         if (sdlHook == null && !trackEntities && !trackBlockColors) return;
 
-        ENTITY_NBT.clear();
+        entityNbtCache.clear();
 
         List<DynamicSource> sources = new ArrayList<>();
         if (sdlHook != null) {
@@ -225,7 +231,7 @@ public final class DynamicLightsCompat {
      * appeared, changed, moved or vanished — client-lighting mods leave no light data or chunk
      * updates behind for the engine to react to, so this drives both the light and its updates.
      */
-    private static void collectTrackedEntities(ClientLevel level, List<DynamicSource> sources, @Nullable List<ColorSource> colors) {
+    private void collectTrackedEntities(ClientLevel level, List<DynamicSource> sources, @Nullable List<ColorSource> colors) {
         Map<Integer, DynamicSource> anchors = new HashMap<>();
         Set<Long> sectionsToRebuild = null;
 
@@ -262,14 +268,14 @@ public final class DynamicLightsCompat {
         }
 
         trackedAnchors = anchors;
-        scheduleRebuilds(sectionsToRebuild);
+        scheduleRebuilds(level, sectionsToRebuild);
     }
 
     /**
      * Snapshots colored entities for coloring dynamic light blocks placed by server-side mods
      * (Lively Lighting), without the tracking/remesh work that client-lighting mods need.
      */
-    private static void collectBlockColors(ClientLevel level, List<ColorSource> colors) {
+    private void collectBlockColors(ClientLevel level, List<ColorSource> colors) {
         for (Entity entity : level.entitiesForRendering()) {
             if (entity.isSpectator()) continue;
             ColorRGB4 color = resolveEntityColor(entity);
@@ -322,11 +328,15 @@ public final class DynamicLightsCompat {
         return sections;
     }
 
-    private static void scheduleRebuilds(@Nullable Set<Long> sections) {
+    private void scheduleRebuilds(ClientLevel clientLevel, @Nullable Set<Long> sections) {
         if (sections == null) return;
-        LevelAccessor level = ColorfulLighting.clientAccessor == null ? null : ColorfulLighting.clientAccessor.getLevel();
-        if (level == null) return;
+        // This level's own accessor, not the client's current one: with Immersive Portals the
+        // remeshes must land on the renderer of the level the sources live in.
+        LevelAccessor level = ((LevelAttachments) clientLevel).colorfullighting$getAccessor();
+        // The accessor above reaches the right renderer for any level; the Sodium fast path only
+        // knows the CURRENT dimension's renderer, so gate it (same rule as engine.onLightUpdate).
         var renderer = Minecraft.getInstance().levelRenderer;
+        boolean sodiumFastPath = SodiumCompat.isSodiumLoaded() && Minecraft.getInstance().level == clientLevel;
         int minSectionY = level.getMinSectionY();
         int maxSectionY = level.getMaxSectionY();
 
@@ -334,7 +344,7 @@ public final class DynamicLightsCompat {
             SectionPos pos = SectionPos.of(key);
             if (pos.y() < minSectionY || pos.y() > maxSectionY) continue;
             level.setSectionDirty(pos.x(), pos.y(), pos.z());
-            if (SodiumCompat.isSodiumLoaded() && renderer instanceof SodiumWorldRendererAccessor sodiumRenderer) {
+            if (sodiumFastPath && renderer instanceof SodiumWorldRendererAccessor sodiumRenderer) {
                 sodiumRenderer.scheduleRebuild(pos.x(), pos.y(), pos.z(), false);
             }
         }
@@ -344,7 +354,7 @@ public final class DynamicLightsCompat {
      * Per-channel max of the stored light color and the contribution of tracked dynamic light
      * sources at the given block. No-op while nothing is tracked. Thread-safe.
      */
-    public static ColorRGB4 maxWithDynamicLight(int blockX, int blockY, int blockZ, ColorRGB4 base) {
+    public ColorRGB4 maxWithDynamicLight(int blockX, int blockY, int blockZ, ColorRGB4 base) {
         int packed = base.red4 << 8 | base.green4 << 4 | base.blue4;
         int result = maxWithDynamicLightPacked(blockX, blockY, blockZ, packed);
         if (result == packed) return base;
@@ -355,7 +365,7 @@ public final class DynamicLightsCompat {
      * Allocation-free equivalent of {@link #maxWithDynamicLight}, taking and returning a packed 12-bit
      * {@code r << 8 | g << 4 | b}. Sits on the chunk-build hot path, so it must not allocate.
      */
-    public static int maxWithDynamicLightPacked(int blockX, int blockY, int blockZ, int base) {
+    public int maxWithDynamicLightPacked(int blockX, int blockY, int blockZ, int base) {
         DynamicSource[] sources = entitySources;
         if (sources.length == 0) return base;
 
@@ -391,6 +401,13 @@ public final class DynamicLightsCompat {
      */
     @Nullable
     public static ColorRGB4 getDynamicBlockLightColor(LevelAccessor level, BlockPos lightBlockPos) {
+        DynamicLightsCompat instance = ((LevelAttachments) level).colorfullighting$getDynamicLights();
+        if (instance == null) return null;
+        return instance.dynamicBlockLightColor(level, lightBlockPos);
+    }
+
+    @Nullable
+    private ColorRGB4 dynamicBlockLightColor(LevelAccessor level, BlockPos lightBlockPos) {
         // Runs on the light-propagator thread, so it must never touch the live entity lists: read the
         // per-tick snapshot instead. Seeing a dynamic light block also arms the colored-entity scan,
         // which stays off for vanilla worlds that never place these blocks.
@@ -430,7 +447,7 @@ public final class DynamicLightsCompat {
      * projected block in place. Runs on the client thread every {@link #SHIP_HUE_RECHECK_INTERVAL_TICKS}
      * ticks; re-propagation re-resolves the color and re-stores the entry.
      */
-    private static void recheckShipMirrorHues(ColoredLightEngine engine, ClientLevel level) {
+    private void recheckShipMirrorHues(ColoredLightEngine engine, ClientLevel level) {
         if (shipMirrorHuesUsed.isEmpty()) return;
         if (++recheckCounter < SHIP_HUE_RECHECK_INTERVAL_TICKS) return;
         recheckCounter = 0;
@@ -525,7 +542,7 @@ public final class DynamicLightsCompat {
         return luminance;
     }
 
-    private static ColorRGB4 resolveSourceColor(Object source) {
+    private ColorRGB4 resolveSourceColor(Object source) {
         if (source instanceof Entity entity) {
             ColorRGB4 color = resolveEntityColor(entity);
             return color != null ? color : Config.defaultColor;
@@ -539,7 +556,7 @@ public final class DynamicLightsCompat {
 
     /** Light color a dynamic light source entity should cast, or null when nothing about it resolves. */
     @Nullable
-    private static ColorRGB4 resolveEntityColor(Entity entity) {
+    private ColorRGB4 resolveEntityColor(Entity entity) {
         ResourceLocation entityId = ForgeRegistries.ENTITY_TYPES.getKey(entity.getType());
         if (entityId != null) {
             VariantList<Config.ColorEmitter> config = Config.getEntityEmitterConfig(entityId);
@@ -584,8 +601,8 @@ public final class DynamicLightsCompat {
      * The entity's NBT for this tick. Serialization can throw for entities whose save code assumes a
      * server context, so a failure is cached as an empty tag: NBT rules then simply never match.
      */
-    private static CompoundTag entityNbt(Entity entity) {
-        return ENTITY_NBT.computeIfAbsent(entity.getId(), id -> {
+    private CompoundTag entityNbt(Entity entity) {
+        return entityNbtCache.computeIfAbsent(entity.getId(), id -> {
             try {
                 return entity.saveWithoutId(new CompoundTag());
             }

@@ -43,9 +43,10 @@ public class ClientEventListener {
 	    var player = ColorfulLighting.clientAccessor.getPlayer();
 	    if (player == null) return;
 	    
-	    // Snapshot dynamic light sources (SodiumDynamicLights) for this tick
+	    // Snapshot this level's dynamic light sources (SodiumDynamicLights, luminous entities)
 	    if (event.level instanceof ClientLevel clientLevel) {
-		    DynamicLightsCompat.clientTick(clientLevel);
+		    DynamicLightsCompat dynamicLights = ((LevelAttachments) clientLevel).colorfullighting$getDynamicLights();
+		    if (dynamicLights != null) dynamicLights.clientTick(clientLevel);
 	    }
 		
 	    ChunkPos pos = player.getChunkPos();

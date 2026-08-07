@@ -49,6 +49,8 @@ public class ColoredLightEngine {
 	
 	private final ClientAccessor clientAccessor;
 	protected final LevelAccessor level;
+	/** This level's dynamic (entity/held-item) light state; may be null for exotic levels. */
+	private final DynamicLightsCompat dynamicLights;
 	protected final ColoredLightStorage storage = new ColoredLightStorage();
 	protected final ColoredLightStorage darknessStorage = new ColoredLightStorage();
     /**
@@ -160,6 +162,10 @@ public class ColoredLightEngine {
 
     private ColoredLightEngine(Level level, ClientAccessor clientAccessor) {
 		this.level = ((LevelAttachments) level).colorfullighting$getAccessor();
+        // Cached here because the sampling hot path consults it per sample; LevelMixin creates the
+        // attachment before the engine. Per-level, so one dimension's held-item lights can never
+        // tint another dimension's samples (Immersive Portals renders several levels at once).
+        this.dynamicLights = ((LevelAttachments) level).colorfullighting$getDynamicLights();
         this.clientAccessor = clientAccessor;
         reset();
 	    synchronized (TRACKED) {
@@ -326,7 +332,9 @@ public class ColoredLightEngine {
 
         // held/dropped-item light from renderer-based dynamic lighting mods (no-op without sources);
         // applied before the darkness subtraction so darkness absorbers dampen it like any other light
-        light = DynamicLightsCompat.maxWithDynamicLightPacked(x, y, z, light);
+        if (dynamicLights != null) {
+            light = dynamicLights.maxWithDynamicLightPacked(x, y, z, light);
+        }
 
         if (light == 0 || light == darkness) return 0;
         if (darkness == 0) return light;
