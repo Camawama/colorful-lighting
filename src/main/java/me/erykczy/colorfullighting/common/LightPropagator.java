@@ -123,6 +123,24 @@ public class LightPropagator implements Runnable {
 				}
 	        } catch (InterruptedException e) {
 				return;
+	        } catch (Throwable t) {
+		        // An escaped exception used to KILL this thread silently: colored light then froze
+		        // for the whole level until '/cl purge' built a new propagator (the long-standing
+		        // "randomly stops working" bug; racing off-thread palette reads are one known
+		        // thrower). Every queue this loop drains is safe to retry, so log and keep going.
+		        propagatorErrors++;
+		        if (propagatorErrors <= 5) {
+			        ColorfulLighting.LOGGER.error(
+					        "Colored light propagator pass failed (error {}); continuing", propagatorErrors, t);
+			        if (propagatorErrors == 5) {
+				        ColorfulLighting.LOGGER.error("Further colored light propagator errors will not be logged");
+			        }
+		        }
+		        try {
+			        Thread.sleep(100L); // don't spin hot if the error is persistent
+		        } catch (InterruptedException e) {
+			        return;
+		        }
 	        }
         }
     }
@@ -177,15 +195,27 @@ public class LightPropagator implements Runnable {
 			if (finished || stalled) {
 				if (drainChunks >= DRAIN_LOG_MIN_CHUNKS) {
 					long elapsedMillis = Math.max(1L, (lastChunkNanos - drainStartNanos) / 1_000_000L);
+					// The level tag matters: with Immersive Portals several levels run their own
+					// propagators, and an untagged log can look healthy while ANOTHER level's
+					// propagator is the broken one.
 					ColorfulLighting.LOGGER.info(
-							"Colored light drain: {} chunks in {} ms ({} chunks/s), {} still queued [{}], lightUpdateSpeed={}",
-							drainChunks, elapsedMillis,
+							"Colored light drain [{}]: {} chunks in {} ms ({} chunks/s), {} still queued [{}], lightUpdateSpeed={}",
+							levelName(engine), drainChunks, elapsedMillis,
 							String.format("%.1f", drainChunks * 1000.0 / elapsedMillis),
 							chunksRemaining, finished ? "finished" : "stalled", speed);
 				}
 				drainStartNanos = 0L;
 				drainChunks = 0;
 			}
+		}
+
+		// Diagnostic for the long-standing "light stops until /cl purge" bug: a stall where only
+		// far view-area-corner chunks are queued is normal (the server never sends those), but a
+		// waiting chunk NEAR the player means some readiness check keeps wrongly rejecting it.
+		// Log which one so the next natural occurrence names the failing check.
+		if (drainStartNanos != 0L && chunksRemaining > 0
+				&& System.nanoTime() - lastChunkNanos > 5_000_000_000L) {
+			logIfStuckNearPlayer(engine);
 		}
 		
 		long passStartNanos = System.nanoTime();
@@ -354,8 +384,8 @@ public class LightPropagator implements Runnable {
         }
 	    engine.structureVersion.incrementAndGet();
 
-        Queue<LightUpdateRequest> increaseRequests = new LinkedList<>();
-        Queue<LightUpdateRequest> darknessIncreaseRequests = new LinkedList<>();
+        Queue<LightUpdateRequest> increaseRequests = new ArrayDeque<>();
+        Queue<LightUpdateRequest> darknessIncreaseRequests = new ArrayDeque<>();
 
         // 2. Find internal sources for all chunks in region
         for (int cx = minChunkX; cx <= maxChunkX; cx++) {
@@ -521,6 +551,69 @@ public class LightPropagator implements Runnable {
         }
     }
 
+    /** Rate limiter for {@link #logIfStuckNearPlayer}. */
+    private long lastStuckLogMillis;
+    /** Count of passes that threw; the thread survives them (see run()). */
+    private int propagatorErrors;
+
+    private static String levelName(ColoredLightEngine engine) {
+        try {
+            var level = engine.level.getLevel();
+            return level == null ? "unknown" : level.dimension().location().getPath();
+        } catch (Throwable t) {
+            return "unknown";
+        }
+    }
+
+    /**
+     * Logs the nearest waiting chunks with the exact readiness detail the queue checks
+     * ({@code hasChunkAndNeighbours}), so a stuck-near-the-player stall shows WHICH neighbour
+     * lookup keeps failing. Rate-limited; silent for the normal far-corner starvation.
+     */
+    private void logIfStuckNearPlayer(ColoredLightEngine engine) {
+        long nowMillis = System.currentTimeMillis();
+        if (nowMillis - lastStuckLogMillis < 30_000L) return;
+        PlayerAccessor player = clientAccessor.getPlayer();
+        if (player == null) return;
+        ChunkPos center = player.getChunkPos();
+
+        ChunkPos[] nearest = new ChunkPos[3];
+        int[] nearestDist = {Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE};
+        for (ChunkPos pos : engine.chunksWaitingForPropagation) {
+            int d = pos.getChessboardDistance(center);
+            for (int i = 0; i < 3; ++i) {
+                if (d < nearestDist[i]) {
+                    for (int j = 2; j > i; --j) { nearestDist[j] = nearestDist[j - 1]; nearest[j] = nearest[j - 1]; }
+                    nearestDist[i] = d;
+                    nearest[i] = pos;
+                    break;
+                }
+            }
+        }
+        if (nearest[0] == null || nearestDist[0] > 8) return; // far corners starving is expected
+        lastStuckLogMillis = nowMillis;
+
+        StringBuilder detail = new StringBuilder();
+        for (int i = 0; i < 3 && nearest[i] != null; ++i) {
+            ChunkPos pos = nearest[i];
+            detail.append(pos).append(" dist=").append(nearestDist[i]).append(" missingNeighbours[");
+            boolean first = true;
+            for (int ox = -1; ox <= 1; ++ox) {
+                for (int oz = -1; oz <= 1; ++oz) {
+                    if (!engine.level.hasChunk(new ChunkPos(pos.x + ox, pos.z + oz))) {
+                        if (!first) detail.append(' ');
+                        detail.append(ox).append(',').append(oz);
+                        first = false;
+                    }
+                }
+            }
+            detail.append("]  ");
+        }
+        ColorfulLighting.LOGGER.warn(
+                "Colored light queue [{}] is stalled with waiting chunks NEAR the player ({} queued): {}(this is the '/cl purge' bug; please report this line)",
+                levelName(engine), engine.chunksWaitingForPropagation.size(), detail);
+    }
+
     private NearestChunkResult getNearestWaitingChunk(ColoredLightEngine engine, LevelAccessor level, PlayerAccessor player) {
         return lightChunkOrder.next(engine, level, player, engine.chunksWaitingForPropagation);
     }
@@ -669,7 +762,7 @@ public class LightPropagator implements Runnable {
         // decrease requests are always executed
         if(!engine.blockUpdateDecreaseRequests.isEmpty()) {
             progressed = true;
-            Queue<ColoredLightEngine.LightUpdateRequest> newIncreaseRequests = new LinkedList<>();
+            Queue<ColoredLightEngine.LightUpdateRequest> newIncreaseRequests = new ArrayDeque<>();
             propagateDecreases(engine, engine.level, engine.blockUpdateDecreaseRequests, newIncreaseRequests);
             propagateIncreases(engine, engine.level, newIncreaseRequests);
 
@@ -684,7 +777,7 @@ public class LightPropagator implements Runnable {
             ChunkPos chunkPos = nearestChunkResult.chunkPos();
             engine.chunksWaitingForPropagation.remove(chunkPos);
 
-            Queue<ColoredLightEngine.LightUpdateRequest> increaseRequests = new LinkedList<>();
+            Queue<ColoredLightEngine.LightUpdateRequest> increaseRequests = new ArrayDeque<>();
             // find light sources and request their propagation
 	        engine.level.findLightSources(chunkPos, (blockPos -> {
                 increaseRequests.add(new ColoredLightEngine.LightUpdateRequest(blockPos, Config.getColorEmission(engine.level, blockPos), false, true, false));
@@ -714,7 +807,7 @@ public class LightPropagator implements Runnable {
         // decrease requests are always executed
         if(!engine.darknessUpdateDecreaseRequests.isEmpty()) {
             progressed = true;
-            Queue<ColoredLightEngine.LightUpdateRequest> newIncreaseRequests = new LinkedList<>();
+            Queue<ColoredLightEngine.LightUpdateRequest> newIncreaseRequests = new ArrayDeque<>();
             propagateDarknessDecreases(engine, engine.level, engine.darknessUpdateDecreaseRequests, newIncreaseRequests);
             propagateDarknessIncreases(engine, engine.level, newIncreaseRequests);
 
@@ -729,7 +822,7 @@ public class LightPropagator implements Runnable {
             ChunkPos chunkPos = nearestChunkResult.chunkPos();
 	        engine.chunksWaitingForDarknessPropagation.remove(chunkPos);
 
-            Queue<ColoredLightEngine.LightUpdateRequest> increaseRequests = new LinkedList<>();
+            Queue<ColoredLightEngine.LightUpdateRequest> increaseRequests = new ArrayDeque<>();
             // find darkness sources and request their propagation
 	        engine.level.findDarknessSources(chunkPos, (blockPos -> {
                 increaseRequests.add(new ColoredLightEngine.LightUpdateRequest(blockPos, Config.getAbsorptionColor(engine.level, blockPos), false, true, false));

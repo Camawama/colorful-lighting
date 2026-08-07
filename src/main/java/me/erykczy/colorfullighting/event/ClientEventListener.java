@@ -270,6 +270,20 @@ public class ClientEventListener {
                         // Diagnostic and power-user commands live under one literal so the
                         // top-level autocomplete stays a short list: on, off, purge, debug.
                         .then(Commands.literal("debug")
+                                // Live queue/thread state for the "light stops until /cl purge" bug:
+                                // run it WHILE the light is broken, before purging.
+                                .then(Commands.literal("queue")
+                                        .executes(context -> {
+                                            var player = Minecraft.getInstance().player;
+                                            if (player != null) {
+                                                String report = ((LevelAttachments) player.level()).colorfullighting$getEngine()
+                                                        .describeQueues(player.chunkPosition());
+                                                ColorfulLighting.LOGGER.info("[CL queue] {}", report);
+                                                context.getSource().sendSuccess(() -> Component.literal(report), false);
+                                            }
+                                            return 1;
+                                        })
+                                )
                                 .then(Commands.literal("patchshaders")
                                         .executes(context -> {
                                             context.getSource().sendSuccess(() -> Component.literal("Patching shaderpacks for Colorful Lighting..."), false);

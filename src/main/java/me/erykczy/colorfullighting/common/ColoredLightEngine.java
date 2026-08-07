@@ -187,6 +187,47 @@ public class ColoredLightEngine {
 //        reset();
 	}
     
+    /**
+     * Diagnostic snapshot for {@code /cl debug queue}, built for the long-standing "colored light
+     * silently stops until /cl purge" bug: shows whether this level's propagator thread is even
+     * alive, the queue depths, and the nearest waiting chunks with the neighbour availability the
+     * queue's readiness check consults.
+     */
+    public String describeQueues(ChunkPos center) {
+        StringBuilder sb = new StringBuilder();
+        Thread thread = lightPropagatorThread;
+        sb.append("engine enabled: ").append(enabled);
+        sb.append("\npropagator thread: ").append(
+                thread == null ? "none" : thread.isAlive() ? "alive" : "DEAD <- the bug; run /cl purge and report your log");
+        sb.append("\nchunks waiting: light ").append(chunksWaitingForPropagation.size())
+                .append(", darkness ").append(chunksWaitingForDarknessPropagation.size());
+        sb.append("\nblock updates queued: light +").append(blockUpdateIncreaseRequests.size())
+                .append(" -").append(blockUpdateDecreaseRequests.size())
+                .append(", darkness +").append(darknessUpdateIncreaseRequests.size())
+                .append(" -").append(darknessUpdateDecreaseRequests.size());
+        int listed = 0;
+        for (ChunkPos pos : chunksWaitingForPropagation) {
+            if (pos.getChessboardDistance(center) > 8) continue;
+            if (listed == 0) sb.append("\nwaiting chunks near you:");
+            sb.append("\n  ").append(pos).append(" dist=").append(pos.getChessboardDistance(center))
+                    .append(" missingNeighbours[");
+            boolean first = true;
+            for (int ox = -1; ox <= 1; ++ox) {
+                for (int oz = -1; oz <= 1; ++oz) {
+                    if (!level.hasChunk(new ChunkPos(pos.x + ox, pos.z + oz))) {
+                        if (!first) sb.append(' ');
+                        sb.append(ox).append(',').append(oz);
+                        first = false;
+                    }
+                }
+            }
+            sb.append(']');
+            if (++listed >= 5) break;
+        }
+        if (listed == 0) sb.append("\nno waiting chunks within 8 chunks of you");
+        return sb.toString();
+    }
+
     public static void setEnabled(boolean enabled) {
         if (ColoredLightEngine.enabled != enabled) {
             ColoredLightEngine.enabled = enabled;
@@ -856,7 +897,9 @@ public class ColoredLightEngine {
 	
 	public static class BlockRequests {
         public BlockPos blockPos;
-        public Queue<LightUpdateRequest> increaseRequests = new LinkedList<>();
+        // ArrayDeque, not LinkedList: propagation enqueues millions of requests per minute and
+        // LinkedList allocates a Node per element (visible in the 2026-08-06 JFR captures)
+        public Queue<LightUpdateRequest> increaseRequests = new ArrayDeque<>();
 
         public BlockRequests(BlockPos blockPos) {
             this.blockPos = blockPos;

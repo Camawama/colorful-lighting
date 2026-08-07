@@ -28,6 +28,12 @@ public abstract class SodiumLightDataAccessMixin {
 
     @Shadow protected BlockAndTintGetter world;
 
+    // Sodium's own per-instance scratch pos. compute() runs for every cell of every meshed
+    // block's 3x3x3 light neighborhood on all chunk-build workers; allocating a fresh BlockPos
+    // there (as this overwrite originally did) was several percent of the game's total
+    // allocation pressure in the 2026-08-06 JFR capture.
+    @Shadow(remap = false) @org.spongepowered.asm.mixin.Final private BlockPos.MutableBlockPos pos;
+
     @Shadow public static int packBL(int blockLight) { return 0; }
     @Shadow public static int packSL(int skyLight) { return 0; }
     @Shadow public static int packLU(int luminance) { return 0; }
@@ -43,7 +49,7 @@ public abstract class SodiumLightDataAccessMixin {
      */
     @Overwrite(remap = false)
     protected int compute(int x, int y, int z) {
-        BlockPos pos = new BlockPos(x, y, z);
+        BlockPos pos = this.pos.set(x, y, z);
         BlockAndTintGetter world = this.world;
 
         BlockState state = world.getBlockState(pos);

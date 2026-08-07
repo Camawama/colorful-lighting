@@ -41,6 +41,12 @@ minecraft {
 
         client {
             property 'forge.enabledGameTestNamespaces', mod_id
+            // Fixed heap so the collector stops resizing under churn (added 2026-08-06 while
+            // chasing the once-a-second GC stutter). ZGC A/B test 2026-08-07: fully concurrent,
+            // sub-millisecond pauses; this dev JVM is Oracle JDK 17, which ships ZGC but NOT
+            // Shenandoah. G1 baseline was: '-XX:MaxGCPauseMillis=20' instead of UseZGC
+            // (measured 81 pauses/2min, 14.6ms avg, P99 33.5ms).
+            jvmArgs '-Xms6G', '-Xmx6G', '-XX:+UseZGC'
         }
 
         server {
@@ -134,9 +140,11 @@ dependencies {
     // RUNTIME ONLY
     runtimeOnly fg.deobf("curse.maven:cloth-config-348521:5729105")
     runtimeOnly fg.deobf("curse.maven:immersive-portals-for-forge-355440:6368524")
+
     // DH 3.1.2-b for 1.20.1 (API major 7); older curse 508933:7375280 was API 5 and nonfunctional in dev
     // Swap in FWGxbEM3 (DH 3.2.0-b, also API 7) to dev-test the 3.2 textured-LOD contract
     runtimeOnly fg.deobf("maven.modrinth:distanthorizons:4HFx4xGx")
+
     runtimeOnly fg.deobf("curse.maven:flerovium-1142875:7584065")
     runtimeOnly fg.deobf("curse.maven:asyncparticles-1215753:8551952")
     runtimeOnly fg.deobf("curse.maven:true-darkness-forge-updated-fork-970641:5080314")
@@ -152,6 +160,10 @@ dependencies {
     //runtimeOnly fg.deobf("curse.maven:vanillin-965702:6446560")
     //runtimeOnly fg.deobf("curse.maven:supplementaries-412082:7884611")
     //runtimeOnly fg.deobf("curse.maven:selene-499980:7945711")
+
+    //runtimeOnly fg.deobf("curse.maven:subtle-effects-1023913:8008318")
+    //runtimeOnly fg.deobf("curse.maven:fzzy-config-1005914:7568893")
+    //runtimeOnly fg.deobf("curse.maven:pretty-rain-1163800:6411988")
 
     // Create (dev environment)
     implementation fg.deobf("com.simibubi.create:create-${minecraft_version}:${create_version}:slim") {

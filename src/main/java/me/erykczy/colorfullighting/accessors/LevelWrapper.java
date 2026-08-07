@@ -123,7 +123,18 @@ public class LevelWrapper implements LevelAccessor, LevelAttachments {
             return null;
         }
         var section = chunk.getSection(chunk.getSectionIndex(pos.getY()));
-        return new BlockStateWrapper(section.getBlockState(pos.getX() & 15, pos.getY() & 15, pos.getZ() & 15)); //level.getBlockState(pos)
+        // Read the palette container directly instead of section.getBlockState: AsyncParticles
+        // wraps getBlockState with a MixinExtras @WrapMethod that allocates an Operation lambda +
+        // boxed-args array on EVERY call, and the propagator's block crawl was the single biggest
+        // allocation source in the game (2026-08-06 JFR capture). The palette read is exactly what
+        // vanilla getBlockState does. A palette resize racing this off-thread read can throw; that
+        // race exists with getBlockState too (AsyncParticles rethrows for non-particle threads), so
+        // treat it like an unloaded section and let the propagation retry via the dirty path.
+        try {
+            return new BlockStateWrapper(section.getStates().get(pos.getX() & 15, pos.getY() & 15, pos.getZ() & 15));
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     @Override
