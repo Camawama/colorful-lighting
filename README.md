@@ -51,6 +51,22 @@ All of this light propagation runs on a separate background thread, so the game 
 
 </details>
 
+## 🧩 For Mod Developers (API)
+
+Colorful Lighting has a small, stable Java API in the `net.camacraft.colorfullighting.api` package for mods that want to integrate. In most cases you don't need it at all:
+
+*   **Most mods are already compatible.** If your rendering passes packed light values through untouched, everything just works.
+*   **Want your blocks or entities to emit colored light?** Ship JSON files in your own assets (`assets/colorful_lighting/light/emitters.json`, etc.); no code and no dependency needed. See the [Resource Pack Tutorial](#%EF%B8%8F-resource-pack-tutorial) below.
+
+The API is for the cases beyond that:
+
+*   `CLPackedLight`: safe int math on packed light values, for mods that compare, combine or rebuild them (this is where most rendering mods break).
+*   `ColorfulLightingApi.getLightView`: sample colored light at any position for your own rendering, safe from render and worker threads.
+*   Color providers: register dynamic light colors that JSON can't express (position, state or time dependent).
+*   Custom level/renderer hooks: opt custom `Level`s (portal mirrors, ship worlds) into colored lighting.
+
+The dependency is optional and client-side, and `CLPackedLight` is dependency-free int math you may simply copy into your mod. For the full overview, including the packed light format, setup instructions and stability guarantees, see the **[API documentation](docs/API.md)**.
+
 ## 🖼️ Resource Pack Tutorial
 
 In your resource pack's namespace folder (where folders like `textures` and `models` are located), create a `light` folder. There you can create the JSON files described below.
