@@ -125,9 +125,16 @@ void main()
     // The boost compensates the levels being cluster AVERAGES, which read a couple of levels
     // dimmer than the true in-world peaks; multiplicative so zeros stay zero (an additive boost
     // would halo every glow's fringe).
+    // The upper clamp must be the brightest texel's CENTER (15.5/16, the true "level 15"
+    // coordinate), never 1.0: DH's lightmap copy is GL_NEAREST + GL_REPEAT (NativeImage.upload
+    // with blur/clamp false), so u = 1.0 wraps around to texel 0 = block light ZERO. The boost
+    // saturates every brightly remembered fragment to the clamp, so clamping at 1.0 painted
+    // whole nether lava oceans with the DARK texel (near-invisible black lava) with a
+    // bright/black speckle frontier where the volume filtered across the saturation threshold.
+    const float LIGHT15 = 15.5 / 16.0;
     const float LEVEL_BOOST = 1.5;
     float peak = max(stored.r, max(stored.g, stored.b));
-    float rememberedLevel = clamp(peak * 0.9375 * LEVEL_BOOST + LIGHT0, 0.0, 1.0);
+    float rememberedLevel = clamp(peak * 0.9375 * LEVEL_BOOST + LIGHT0, 0.0, LIGHT15);
     float blockCoord = mix(vertexLightCoord.x, rememberedLevel, colorWeight);
 
     vec3 combined = texture(uLightMap, vec2(blockCoord, vertexLightCoord.y)).rgb;
