@@ -1,5 +1,7 @@
 #version 150
 
+uniform float colorfullighting_mod_injected_u_NightVibrancy;
+
 vec4 minecraft_sample_vanilla_lightmap(sampler2D lightMap, ivec2 uv) {
     return texture(lightMap, clamp(uv / 256.0, vec2(0.5 / 16.0), vec2(15.5 / 16.0)));
 }
@@ -22,5 +24,12 @@ vec4 sample_lightmap_colored(sampler2D lightMap, ivec2 uv) {
         minecraft_sample_vanilla_lightmap(lightMap, ivec2(green8, 0)).r,
         minecraft_sample_vanilla_lightmap(lightMap, ivec2(blue8, 0)).r
     );
-    return vec4(sky + block * max(0.1, 1.0 - sky.r), 1.0);
+    float moonWashoutFactor = mix(1.0, 0.0, colorfullighting_mod_injected_u_NightVibrancy);
+    float skyExposure = float(skyLight4) / 16.0;
+    float effectiveSkyBrightness = sky.r * moonWashoutFactor * skyExposure;
+    float washFactor = max(0.1, 1.0 - effectiveSkyBrightness);
+
+    block = mix(vec3(length(block)), block, washFactor * 0.25 + 0.75);
+
+    return vec4(sky + block * (max(0.1, 1.0 - sky.r) * 0.9 + 0.1), 1.0);
 }

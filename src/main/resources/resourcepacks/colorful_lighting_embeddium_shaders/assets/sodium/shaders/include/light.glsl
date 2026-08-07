@@ -1,3 +1,6 @@
+uniform float u_NightVibrancy;
+uniform float u_ColoredLightingEnabled;
+
 // --- COLORFUL LIGHTING START ---
 vec4 _sample_lightmap_vanilla(sampler2D lightMap, ivec2 uv) {
     return texture(lightMap, clamp(uv / 256.0, vec2(0.5 / 16.0), vec2(15.5 / 16.0)));

@@ -6,20 +6,16 @@ import io.github.douira.glsl_transformer.ast.node.declaration.TypeAndInitDeclara
 import io.github.douira.glsl_transformer.ast.node.expression.Expression;
 import io.github.douira.glsl_transformer.ast.node.expression.ReferenceExpression;
 import io.github.douira.glsl_transformer.ast.node.expression.binary.AssignmentExpression;
-import io.github.douira.glsl_transformer.ast.node.expression.unary.FunctionCallExpression;
 import io.github.douira.glsl_transformer.ast.node.external_declaration.DeclarationExternalDeclaration;
 import io.github.douira.glsl_transformer.ast.node.external_declaration.ExternalDeclaration;
 import io.github.douira.glsl_transformer.ast.node.statement.CompoundStatement;
-import io.github.douira.glsl_transformer.ast.node.statement.Statement;
 import io.github.douira.glsl_transformer.ast.node.statement.terminal.ExpressionStatement;
 import io.github.douira.glsl_transformer.ast.node.type.specifier.BuiltinNumericTypeSpecifier;
 import io.github.douira.glsl_transformer.ast.query.Root;
 import io.github.douira.glsl_transformer.ast.query.match.AutoHintedMatcher;
 import io.github.douira.glsl_transformer.ast.query.match.HintedMatcher;
-import io.github.douira.glsl_transformer.ast.transform.ASTInjectionPoint;
 import io.github.douira.glsl_transformer.ast.transform.ASTParser;
 import io.github.douira.glsl_transformer.parser.ParseShape;
-import me.erykczy.colorfullighting.compat.oculus.Resources;
 import net.irisshaders.iris.pipeline.transform.PatchShaderType;
 import net.irisshaders.iris.pipeline.transform.parameter.Parameters;
 

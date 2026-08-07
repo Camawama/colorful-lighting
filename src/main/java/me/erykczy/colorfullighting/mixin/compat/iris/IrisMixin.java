@@ -3,6 +3,7 @@ package me.erykczy.colorfullighting.mixin.compat.iris;
 import me.erykczy.colorfullighting.common.ColoredLightEngine;
 import me.erykczy.colorfullighting.common.accessors.mixin.iris.CustomShaderProperties;
 import net.irisshaders.iris.Iris;
+import net.irisshaders.iris.shaderpack.ShaderPack;
 import net.irisshaders.iris.shaderpack.properties.ShaderProperties;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
@@ -11,6 +12,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+import java.util.Optional;
 import java.util.OptionalInt;
 
 @Mixin(value = Iris.class, remap = false)
@@ -19,7 +21,10 @@ public class IrisMixin {
 	private static void postReload(Minecraft minecraft, CallbackInfo ci) {
 		if (!ColoredLightEngine.isEnabled()) return;
 		
-		ShaderProperties properties = ((ShaderPackAccessor) Iris.getCurrentPack().get()).getShaderProperties();
+		Optional< ShaderPack> pack = Iris.getCurrentPack();
+		if (pack.isEmpty()) return;
+		
+		ShaderProperties properties = ((ShaderPackAccessor) pack.get()).getShaderProperties();
 		OptionalInt value = ((CustomShaderProperties) properties).colorfullighting$getCompatStatus();
 		
 		if (value.isEmpty()) {
