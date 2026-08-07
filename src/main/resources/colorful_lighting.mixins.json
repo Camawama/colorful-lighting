@@ -70,6 +70,9 @@
 	"compat.hbm.SingleMeshVboRendererMixin",
 	"compat.hbm.VanillaInstancedBatchRendererMixin",
 	"compat.nvidium.NvidiumCompactChunkVertexMixin",
+	"compat.subtleeffects.DropletParticleMixin",
+	"compat.subtleeffects.SplashParticleMixin",
+	"compat.subtleeffects.SplashRippleParticleMixin",
 	"render.SpriteContentsAccessor"
   ],
   "injectors": {

@@ -6,6 +6,10 @@ Planned
 - keep Valkyrien Skies compatibility on every version where VS exists
 - add Sable / Create Aeronautics compatibility alongside Valkyrien Skies where possible
 
+2026-08-07
+- fixed particles rendering black in daylight and uncolored white near lights with Async Particles installed (this also fixes all the Pretty Rain weather particles)
+- added Subtle Effects compatibility (splash, droplet and ripple particles now take colored light)
+
 2026-08-05
 - fixed crash on world join when Distant Horizons is not installed
 - fixed pitch-black terrain with Nvidium/Acedium installed

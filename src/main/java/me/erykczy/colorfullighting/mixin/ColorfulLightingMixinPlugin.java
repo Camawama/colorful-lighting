@@ -67,8 +67,14 @@ public class ColorfulLightingMixinPlugin implements IMixinConfigPlugin {
             return hasClass("com.moepus.flerovium.functions.FastSimpleBakedModelRenderer");
         }
         if (mixinClassName.contains(".asyncparticles.")) {
-            // Ensure AsyncParticles is installed before applying its compat mixin
-            return hasClass("fun.qu_an.minecraft.asyncparticles.client.addon.LightCachedParticleAddon");
+            // Ensure AsyncParticles is installed before applying its compat mixin. Its jar keeps
+            // both loader variants of every class, rooted per loader — on Forge the runtime
+            // package is forge.fun.qu_an... (probing the unprefixed name silently disabled this
+            // compat, leaving the byte light cache to mangle the colored packed int: sky nibble
+            // dropped → particles black in daylight, red bits in the block nibble → white near
+            // torches). Keep the unprefixed probe for potential single-loader ports.
+            return hasClass("forge.fun.qu_an.minecraft.asyncparticles.client.addon.LightCachedParticleAddon")
+                    || hasClass("fun.qu_an.minecraft.asyncparticles.client.addon.LightCachedParticleAddon");
         }
         if (mixinClassName.contains(".dynamiclights.")) {
             // Ensure SodiumDynamicLights (DynamicLights Reforged) is installed
@@ -77,6 +83,10 @@ public class ColorfulLightingMixinPlugin implements IMixinConfigPlugin {
         if (mixinClassName.contains(".epicfight.")) {
             // Ensure Epic Fight is installed before applying its compat mixin
             return hasClass("yesman.epicfight.client.renderer.patched.entity.PatchedLivingEntityRenderer");
+        }
+        if (mixinClassName.contains(".subtleeffects.")) {
+            // Ensure Subtle Effects is installed before applying its compat mixins
+            return hasClass("einstein.subtle_effects.particle.SplashParticle");
         }
         if (mixinClassName.contains(".flopper.")) {
             // Ensure Flopper is installed before applying its compat mixin

@@ -164,6 +164,8 @@ dependencies {
     //runtimeOnly fg.deobf("curse.maven:subtle-effects-1023913:8008318")
     //runtimeOnly fg.deobf("curse.maven:fzzy-config-1005914:7568893")
     //runtimeOnly fg.deobf("curse.maven:pretty-rain-1163800:6411988")
+    // Kotlin for Forge: required by fzzy-config (Pretty Rain's config lib)
+    //runtimeOnly fg.deobf("thedarkcolour:kotlinforforge:4.11.0")
 
     // Create (dev environment)
     implementation fg.deobf("com.simibubi.create:create-${minecraft_version}:${create_version}:slim") {
