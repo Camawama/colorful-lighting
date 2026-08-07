@@ -7,8 +7,17 @@ Planned
 - add Sable / Create Aeronautics compatibility alongside Valkyrien Skies where possible
 
 2026-08-07
+- fixed colored light updates stopping permanently (until /cl purge) when the light engine thread died; the engine now logs the crash and restarts itself
+- added "/cl debug queue" for light engine diagnostics
 - fixed particles rendering black in daylight and uncolored white near lights with Async Particles installed (this also fixes all the Pretty Rain weather particles)
 - added Subtle Effects compatibility (splash, droplet and ripple particles now take colored light)
+
+2026-08-06
+- improved Immersive Portals compatibility: colored light now renders correctly in remote dimensions seen through portals
+- fixed dynamic light state bleeding between dimensions by making it per-level
+- improved Distant Horizons LOD color accuracy and shader performance
+- fixed light intensity in Distant Horizons LOD chunks near colored light sources
+- fixed black/invisible lava in Distant Horizons LOD chunks in the Nether
 
 2026-08-05
 - fixed crash on world join when Distant Horizons is not installed
