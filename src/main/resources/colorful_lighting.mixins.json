@@ -64,6 +64,7 @@
 	"compat.flerovium.BlockBreakingDecalGeneratorMixin",
 	"compat.flerovium.BlockBreakingDecalGeneratorIrisMixin",
 	"compat.asyncparticles.AsyncParticlesLightCacheMixin",
+	"compat.asyncparticles.AsyncParticlesGameUtilMixin",
 	"compat.epicfight.PatchedLivingEntityRendererMixin",
 	"compat.flopper.RenderBlockEntityFlopperMixin",
 	"compat.hbm.LightSampleCacheMixin",
