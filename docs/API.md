@@ -1,7 +1,7 @@
 # Colorful Lighting API
 
 For mod developers who want their mod to work with (or integrate into) Colorful Lighting.
-Everything lives in `me.erykczy.colorfullighting.api`; nothing outside that package is API.
+Everything lives in `net.camacraft.colorfullighting.api`; nothing outside that package is API.
 Current `ColorfulLightingApi.API_VERSION`: 1.
 
 ## Do you even need the API?
@@ -43,7 +43,7 @@ There is also a thin `-api` classifier jar (the `api` package only, classes + so
 by the `apiJar` task if you prefer a minimal compile-time artifact.
 
 At runtime, guard your integration behind `ModList.get().isLoaded("colorful_lighting")` and keep
-all `me.erykczy.colorfullighting.*` imports inside classes that are only loaded when the mod is
+all `net.camacraft.colorfullighting.*` imports inside classes that are only loaded when the mod is
 present (the standard optional-dependency pattern).
 
 In `mods.toml`:
@@ -139,4 +139,4 @@ as dynamic light sources.
   `API_VERSION` bumps on anything incompatible.
 - Semi-stable: `CLWrapperAttachments` (mirrors internal per-level state by necessity; new
   methods arrive with delegating defaults).
-- Everything outside `me.erykczy.colorfullighting.api` is internal and changes without notice.
+- Everything outside `net.camacraft.colorfullighting.api` is internal and changes without notice.

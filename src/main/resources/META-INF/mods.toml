@@ -1,7 +1,7 @@
 modLoader="javafml"
 loaderVersion="${loader_version_range}"
 license="${mod_license}"
-issueTrackerURL="https://github.com/erykczy/colorful-lighting/issues"
+issueTrackerURL="https://github.com/Camawama/colorful-lighting-sodium/issues"
 
 [[mods]]
 modId="${mod_id}"
