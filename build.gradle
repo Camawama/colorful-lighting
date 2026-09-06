@@ -41,6 +41,7 @@ minecraft {
 
         client {
             property 'forge.enabledGameTestNamespaces', mod_id
+//            jvmArgs "-Dpaco.debug.base_shader_dump=true"
             // Fixed heap so the collector stops resizing under churn (added 2026-08-06 while
             // chasing the once-a-second GC stutter). ZGC A/B test 2026-08-07: fully concurrent,
             // sub-millisecond pauses; this dev JVM is Oracle JDK 17, which ships ZGC but NOT
@@ -190,6 +191,14 @@ dependencies {
     implementation fg.deobf("com.tterrag.registrate:Registrate:${registrate_version}")
 
     compileOnly "curse.maven:euphoria-patches-915902:8177591"
+
+//    // oculus flywheel compatilayers
+//    compileOnly fg.deobf("curse.maven:iris-flywheel-compat-659897:6694861")
+//    implementation fg.deobf("curse.maven:colorwheel-1254143:8206638")
+//
+//    implementation fg.deobf("org.andrew:paco:1.0")
+    implementation fg.deobf("a:acedium:1.0")
+//    implementation fg.deobf("curse.maven:swampier-swamps-632591:4578599")
 }
 
 tasks.named('processResources', ProcessResources).configure {

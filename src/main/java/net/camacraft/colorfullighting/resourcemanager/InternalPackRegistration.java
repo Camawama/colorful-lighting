@@ -78,8 +78,15 @@ public class InternalPackRegistration {
 					false
 			));
 		}
+	    if (ModList.get().isLoaded("acedium")) {
+		    registerPacks.add(makePack(
+				    ResourceLocation.parse("colorful_lighting:colorful_lighting_acedium"),
+				    Component.literal("Colorful Lighting Acedium Assets"),
+				    false
+		    ));
+	    }
 		
-        bus.addListener(EventPriority.LOWEST, InternalPackRegistration::addPackFinders);
+	    bus.addListener(EventPriority.LOWEST, InternalPackRegistration::addPackFinders);
     }
 	
 	private static InternalPack makePack(ResourceLocation id, MutableComponent displayName, boolean display) {

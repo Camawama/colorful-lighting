@@ -11,6 +11,8 @@ import me.jellysquid.mods.sodium.client.render.chunk.lists.ChunkRenderListIterab
 import me.jellysquid.mods.sodium.client.render.chunk.shader.ChunkShaderInterface;
 import me.jellysquid.mods.sodium.client.render.chunk.terrain.TerrainRenderPass;
 import me.jellysquid.mods.sodium.client.render.viewport.CameraTransform;
+import net.camacraft.colorfullighting.compat.sodium.SodiumCompat;
+import net.camacraft.colorfullighting.compat.sodium.SodiumShaderCompat;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import org.spongepowered.asm.mixin.Mixin;
@@ -26,33 +28,11 @@ public abstract class DefaultChunkRendererMixin {
         // Use the accessor to get the active program from the parent class
         GlProgram<ChunkShaderInterface> activeProgram = ((ShaderChunkRendererAccessor) this).getActiveProgram();
         if (activeProgram == null) return;
-        
-        ChunkShaderInterface shader = activeProgram.getInterface();
-        
-        if (shader instanceof ChunkShaderInterfaceExtension extension) {
-			// TODO: original code made sure the lighting engine is not null
-	        //       unsure if having this be dependent on if the world instance has a colored lighting engine is important or not
-//            ColoredLightEngine engine = ColoredLightEngine.getInstance();
-//            extension.setColoredLightingEnabled(engine != null && ColoredLightEngine.isEnabled());
-	        
-            extension.setColoredLightingEnabled(ColoredLightEngine.isEnabled());
-
-            ClientLevel level = Minecraft.getInstance().level;
-            if (level != null) {
-                // getStarBrightness is 1.0 at midnight, 0.0 at noon.
-                // This directly serves as our "night factor".
-                float nightFactor = level.getStarBrightness(Minecraft.getInstance().getFrameTime());
-
-                int phase = level.getMoonPhase();
-                float moonVibrancy = Config.getMoonVibrancy(phase);
-
-                float totalVibrancy = nightFactor * moonVibrancy;
-                
-                // Ensure it's clamped 0..1
-                totalVibrancy = Math.max(0.0f, Math.min(1.0f, totalVibrancy));
-
-                extension.setNightVibrancy(totalVibrancy);
-            }
-        }
+	    
+	    ChunkShaderInterface shader = activeProgram.getInterface();
+	    
+	    if (shader instanceof ChunkShaderInterfaceExtension extension) {
+		    SodiumShaderCompat.setupShader(extension);
+	    }
     }
 }

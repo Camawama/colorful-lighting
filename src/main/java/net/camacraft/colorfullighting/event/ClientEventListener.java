@@ -7,7 +7,6 @@ import net.camacraft.colorfullighting.common.accessors.mixin.LevelAttachments;
 import net.camacraft.colorfullighting.common.accessors.mixin.LevelRendererAccessor;
 import net.camacraft.colorfullighting.compat.dynamiclights.DynamicLightsCompat;
 import net.camacraft.colorfullighting.compat.flywheel.FlywheelCompat;
-import net.camacraft.colorfullighting.compat.nvidium.NvidiumCompat;
 import net.camacraft.colorfullighting.compat.oculus.ShaderpackAutoPatcher;
 import net.camacraft.colorfullighting.compat.oculus.cmd.PackArgumentType;
 import net.camacraft.colorfullighting.compat.oculus.cmd.ShaderPackName;
@@ -109,9 +108,6 @@ public class ClientEventListener {
 
         // Keeps the DH color cache's active-level pointer fresh and autosaves it (no-op without DH)
         DhCompat.clientTick();
-
-        // Tracks night vibrancy for the tint baked into Nvidium/Acedium meshes (no-op without them)
-        NvidiumCompat.clientTick();
 
         if (ColorfulLighting.clientAccessor == null) return;
         var player = ColorfulLighting.clientAccessor.getPlayer();
