@@ -392,6 +392,7 @@ public class ColoredLightEngine {
      * build height keep returning 0, same as the missing-section behaviour this falls back from.
      */
     private int vanillaBlockLightAsWhitePacked(SectionCursor cursor, int x, int y, int z) {
+        fallbackSamples.incrementAndGet();
 		Level level = this.level.getLevel();
         if (level == null || level.isOutsideBuildHeight(y)) return 0;
         int brightness = level.getBrightness(LightLayer.BLOCK, cursor.fallbackPos.set(x, y, z));
@@ -788,6 +789,32 @@ public class ColoredLightEngine {
      * capture worker reads sections directly, racing the propagator the same benign way render-thread
      * sampling does. Null when the section has left every tracked area.
      */
+    /**
+     * Diagnostics: samples that hit the out-of-area white fallback (no stored section). Incremented
+     * from chunk-build workers, so atomic.
+     */
+    private final AtomicInteger fallbackSamples = new AtomicInteger();
+
+    public int debugFallbackSamples() {
+        return fallbackSamples.get();
+    }
+
+    /** Diagnostics: sections currently stored (view area plus extra regions). */
+    public int debugStoredSectionCount() {
+        return storage.sectionCount();
+    }
+
+    /** Diagnostics: chunks queued or already propagated for the current coverage. */
+    public int debugQueuedChunkCount() {
+        return queuedChunks.size();
+    }
+
+    /** Diagnostics: the view area as chunk bounds, or "none" before the first level tick. */
+    public String debugViewArea() {
+        if (viewArea.maxX < viewArea.minX) return "none";
+        return "[" + viewArea.minX + ".." + viewArea.maxX + ", " + viewArea.minZ + ".." + viewArea.maxZ + "]";
+    }
+
     public ColoredLightSection dhGetLightSection(long sectionPos) {
         return storage.getSection(sectionPos);
     }

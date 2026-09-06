@@ -118,7 +118,13 @@ public final class DhColorVolume {
         boolean cacheSwapped = cache != lastCache;
         boolean bulkChanged = cache != null && cache.getStructureVersion() != lastStructureVersion;
         if (cacheSwapped || bulkChanged || near.textureId == 0) {
-            if (near.textureId != 0 && !throttleOk) return;
+            // A dimension change is never throttled: until the rebuild runs, every LOD samples the
+            // previous dimension's volume through the previous dimension's windows, and for the
+            // first frames after an Immersive Portals teleport the LODs are all there is to see.
+            if (near.textureId != 0 && !throttleOk && !cacheSwapped) return;
+            if (cacheSwapped && lastCache != null) {
+                ColorfulLighting.LOGGER.info("[DH volume] dimension cache swapped, rebuilding volumes");
+            }
             lastRebuildNanos = now;
             lastCache = cache;
             lastStructureVersion = cache == null ? -1 : cache.getStructureVersion();

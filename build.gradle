@@ -46,7 +46,14 @@ minecraft {
             // sub-millisecond pauses; this dev JVM is Oracle JDK 17, which ships ZGC but NOT
             // Shenandoah. G1 baseline was: '-XX:MaxGCPauseMillis=20' instead of UseZGC
             // (measured 81 pauses/2min, 14.6ms avg, P99 33.5ms).
-            jvmArgs '-Xms6G', '-Xmx6G', '-XX:+UseZGC'
+            // MaxDirectMemorySize added 2026-09-05: two JVM aborts that day ("insufficient memory
+            // for the Java Runtime Environment", native malloc failures) with the heap at 1.6G of
+            // 6G. Flight recorder showed the off-heap direct-buffer pool swinging 4MB <-> 2GB every
+            // ~10s (Distant Horizons LOD loading; Netty falls back to cleaner-managed direct
+            // buffers here too) and it is only released by GC. Uncapped it defaults to Xmx, so the
+            // process could commit 6G heap + 6G direct before a GC ran; the cap makes the JDK force
+            // a collection at 2G instead of letting the machine run out of commit.
+            jvmArgs '-Xms6G', '-Xmx6G', '-XX:+UseZGC', '-XX:MaxDirectMemorySize=2G'
         }
 
         server {

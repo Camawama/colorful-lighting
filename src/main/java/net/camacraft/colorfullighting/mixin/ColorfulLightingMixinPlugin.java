@@ -96,6 +96,10 @@ public class ColorfulLightingMixinPlugin implements IMixinConfigPlugin {
             // Ensure HBM Modernized is installed before applying its compat mixins
             return hasClass("com.hbm_m.client.render.LightSampleCache");
         }
+        if (mixinClassName.contains(".truedarkness.")) {
+            // Ensure True Darkness (any fork keeping grondag's package) is installed
+            return hasClass("grondag.darkness.Darkness");
+        }
         if (mixinClassName.contains(".nvidium.")) {
             // Ensure Nvidium or an Acedium port is installed; probe the target class itself
             // since the mod id differs between the forks (nvidium / acedium)

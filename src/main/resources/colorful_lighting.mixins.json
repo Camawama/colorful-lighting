@@ -74,6 +74,7 @@
     "compat.subtleeffects.DropletParticleMixin",
     "compat.subtleeffects.SplashParticleMixin",
     "compat.subtleeffects.SplashRippleParticleMixin",
+    "compat.truedarkness.LightTextureMixin",
     "render.SpriteContentsAccessor"
   ],
   "injectors": {

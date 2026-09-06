@@ -571,6 +571,10 @@ public class LightPropagator implements Runnable {
     private void logIfStuckNearPlayer(ColoredLightEngine engine) {
         long nowMillis = System.currentTimeMillis();
         if (nowMillis - lastStuckLogMillis < 30_000L) return;
+        // "Near the player" only means something in the player's own dimension. A remote level
+        // (Immersive Portals) legitimately keeps chunks waiting next to the player's coordinates
+        // forever, since those chunks belong to a different world; that used to log every 30s.
+        if (Minecraft.getInstance().level != engine.level.getLevel()) return;
         PlayerAccessor player = clientAccessor.getPlayer();
         if (player == null) return;
         ChunkPos center = player.getChunkPos();

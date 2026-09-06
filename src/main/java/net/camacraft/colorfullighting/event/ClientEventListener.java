@@ -63,7 +63,11 @@ public class ClientEventListener {
 	    LevelAttachments attachments = (LevelAttachments) event.level;
 		ColoredLightEngine engine = attachments.colorfullighting$getEngine();
 		engine.updateViewArea(viewArea);
-		
+
+	    // If this level was remote until now (Immersive Portals), hand its coverage over from the
+	    // portal cells to the view area just established above. Must stay after updateViewArea.
+	    ImmersivePortalsCompat.onCurrentLevelTick(event.level);
+
 	    // Keep a light region alive for every loaded Valkyrien Skies ship (no-op without VS).
 	    VsCompat compat = attachments.colorfullighting$getVSCompat();
 		if (compat != null) compat.clientTick(event.level);
@@ -110,7 +114,9 @@ public class ClientEventListener {
         NvidiumCompat.clientTick();
 
         // Mirrors loaded chunks of non-current levels (Immersive Portals remote dimensions) into
-        // their engines as light regions; no-op when only the player's own level exists
+        // their engines as light regions; no-op when only the player's own level exists. Runs from
+        // the client tick because it must visit every level, and only the current level gets
+        // LevelTickEvent; the current level itself is handled in the LevelTickEvent handler above.
         ImmersivePortalsCompat.clientTick(Minecraft.getInstance());
 
         if (ColorfulLighting.clientAccessor == null) return;

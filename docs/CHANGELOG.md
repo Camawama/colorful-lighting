@@ -6,6 +6,11 @@ Planned
 - keep Valkyrien Skies compatibility on every version where VS exists
 - add Sable / Create Aeronautics compatibility alongside Valkyrien Skies where possible
 
+2026-09-05
+- fixed colored light being wiped and fully re-propagated (all chunks re-meshing) after walking through an Immersive Portals portal
+- added True Darkness compatibility: its darkening now follows the dimension being rendered, so a dark Nether no longer blacks out the Overworld seen through an Immersive Portals portal
+- fixed a brief flash of uncolored, washed-out lighting right after arriving in a dimension through an Immersive Portals portal with Distant Horizons colored LODs on (the LOD colour volume now switches dimension immediately)
+
 2026-08-07
 - fixed fps stutter with Distant Horizons colored LODs: light changes now patch the color volume incrementally instead of re-uploading all of it 4 times per second
 - fixed block break particles flashing uncolored for one frame near colored light sources with Async Particles installed

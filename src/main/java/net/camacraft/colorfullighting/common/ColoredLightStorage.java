@@ -77,6 +77,11 @@ public class ColoredLightStorage {
         map.computeIfAbsent(sectionPos, pos -> new ColoredLightSection());
     }
 
+    /** Number of sections currently held; diagnostics only. */
+    public int sectionCount() {
+        return map.size();
+    }
+
     public void removeSection(long sectionPos) {
         map.remove(sectionPos);
     }

@@ -4,6 +4,7 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongIterator;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+import net.camacraft.colorfullighting.ColorfulLighting;
 import net.camacraft.colorfullighting.common.ColoredLightEngine;
 import net.camacraft.colorfullighting.common.ViewArea;
 import net.camacraft.colorfullighting.common.accessors.mixin.LevelAttachments;
@@ -22,19 +23,31 @@ import java.util.WeakHashMap;
  * Keeps colored light alive in client levels the player is not currently in.
  *
  * <p>Immersive Portals (and mods like it) keep several ClientLevels loaded at once and render a
- * remote dimension through portals. The remote level never receives LevelTickEvent, so the
+ * remote dimension through portals. Only the current level is ticked through Forge's
+ * LevelTickEvent (Immersive Portals ticks remote levels itself, without the Forge hooks), so the
  * engine's view area is never established there and every sample takes the vanilla-white
  * out-of-area fallback until the player has visited that dimension once. Rather than binding to
  * any Immersive Portals API, this tracks which chunks the client actually has loaded in each
- * level — chunks only exist in a non-current level when such a mod put them there — and mirrors
+ * level (chunks only exist in a non-current level when such a mod put them there) and mirrors
  * them into that level's engine as extra light regions, grouped into cells of
  * {@code CELL_SIZE * CELL_SIZE} chunks.
  *
- * <p>While a level IS the current one its coverage comes from the engine's view area, so its cells
- * are withdrawn (chunk tracking continues, ready for the level to go remote again). The withdrawal
- * also cleans up the cells a level accumulated while it was remote.
+ * <p>While a level IS the current one its coverage comes from the engine's view area, which also
+ * filters out the chunks that can never propagate (see ColoredLightEngine#updateViewArea), so its
+ * cells are withdrawn (chunk tracking continues, ready for the level to go remote again). The
+ * withdrawal is a bookkeeping handover, not a purge: the engine keeps every section the view area
+ * holds and only drops columns that neither the view area nor another cell covers.
  *
- * <p>Client thread only: chunk load/unload events, level unload, and the tick handler all run there.
+ * <p>Ordering matters for that handover. Immersive Portals can change the player's dimension from
+ * its own hook at the tail of Minecraft#tick, i.e. after the level tick (which already ran for the
+ * OLD level) but before ClientTickEvent END. Withdrawing the new level's cells from the client tick
+ * at that point would run before the new level's view area exists, so nothing would be tracked and
+ * every section of colored light would be wiped, to be re-propagated and re-meshed from scratch on
+ * the following ticks. The withdrawal therefore runs from the level tick, right after the view area
+ * update ({@link #onCurrentLevelTick}), where the ordering holds by construction; the client tick
+ * only ever adds coverage to non-current levels.
+ *
+ * <p>Client thread only: chunk load/unload events, level unload, and both tick handlers run there.
  */
 public final class ImmersivePortalsCompat {
     /** Cells are 2^CELL_SHIFT chunks on a side. */
@@ -51,6 +64,11 @@ public final class ImmersivePortalsCompat {
      * forever. Entries are normally removed explicitly in {@link #onLevelUnload}.
      */
     private static final Map<Level, LevelState> STATES = new WeakHashMap<>();
+    /**
+     * Passed to {@link ColoredLightEngine#syncExtraRegions(long, Map)} to withdraw every cell of a
+     * level: the engine reconciles the remote-level namespace against this empty map and removes
+     * the regions it still holds. Only columns nothing else tracks lose their sections.
+     */
     private static final Map<Long, ColoredLightEngine.LightRegion> NO_REGIONS = Map.of();
     private static int tickCounter;
 
@@ -63,11 +81,16 @@ public final class ImmersivePortalsCompat {
         final Map<Long, ColoredLightEngine.LightRegion> regions = new HashMap<>();
         final LongOpenHashSet dirtyCells = new LongOpenHashSet();
         /** Whether the engine currently holds this level's cells (i.e. the level was remote). */
-        boolean synced;
+        boolean cellsHeldByEngine;
+        // Diagnostics for the dimension-change transient: activity in the seconds after a handover.
+        int chunkLoads, chunkUnloads;
+        int fallbackSamplesAtHandover;
+        int ticksUntilSummary;
     }
 
     public static void onChunkLoad(ClientLevel level, ChunkPos pos) {
         LevelState state = STATES.computeIfAbsent(level, l -> new LevelState());
+        state.chunkLoads++;
         long cell = cellKey(pos.x >> CELL_SHIFT, pos.z >> CELL_SHIFT);
         if (state.cellChunks.computeIfAbsent(cell, c -> new HashSet<>()).add(pos)) {
             state.dirtyCells.add(cell);
@@ -77,6 +100,7 @@ public final class ImmersivePortalsCompat {
     public static void onChunkUnload(ClientLevel level, ChunkPos pos) {
         LevelState state = STATES.get(level);
         if (state == null) return;
+        state.chunkUnloads++;
         long cell = cellKey(pos.x >> CELL_SHIFT, pos.z >> CELL_SHIFT);
         Set<ChunkPos> chunks = state.cellChunks.get(cell);
         if (chunks != null && chunks.remove(pos)) {
@@ -89,30 +113,65 @@ public final class ImmersivePortalsCompat {
         STATES.remove(level);
     }
 
-    /** Called once per client tick from ClientEventListener. */
+    /**
+     * Called from the LevelTickEvent handler for the current level, after its engine's view area
+     * has been updated for this tick. Hands coverage over from the cells (held while the level was
+     * remote) to the view area. See the class comment for why this must not run from the client
+     * tick.
+     */
+    public static void onCurrentLevelTick(Level level) {
+        LevelState state = STATES.get(level);
+        if (state == null) return;
+        ColoredLightEngine engine = ((LevelAttachments) level).colorfullighting$getEngine();
+        if (engine == null) return;
+        if (state.ticksUntilSummary > 0 && --state.ticksUntilSummary == 0) {
+            // Two seconds after the handover: did the client reload chunks, and did any mesh get
+            // built against a missing section (the white fallback) in that window?
+            ColorfulLighting.LOGGER.info(
+                    "[CL portal] 2s after {} became current: {} chunk loads, {} chunk unloads, {} white-fallback samples, sections {}",
+                    level.dimension().location(), state.chunkLoads, state.chunkUnloads,
+                    engine.debugFallbackSamples() - state.fallbackSamplesAtHandover, engine.debugStoredSectionCount());
+        }
+        if (!state.cellsHeldByEngine) return;
+        state.chunkLoads = 0;
+        state.chunkUnloads = 0;
+        state.fallbackSamplesAtHandover = engine.debugFallbackSamples();
+        state.ticksUntilSummary = 40;
+        int sectionsBefore = engine.debugStoredSectionCount();
+        int queuedBefore = engine.debugQueuedChunkCount();
+        engine.syncExtraRegions(ColoredLightEngine.REGION_NAMESPACE_REMOTE_LEVEL, NO_REGIONS);
+        state.cellsHeldByEngine = false;
+        // One line per dimension change; a healthy handover drops only what lies beyond the view
+        // area (a few hundred sections at most) and never re-queues chunks.
+        ColorfulLighting.LOGGER.info(
+                "[CL portal] {} is now the current level: withdrew {} cells, view area {}, sections {} -> {}, queued chunks {} -> {}",
+                level.dimension().location(), state.regions.size(), engine.debugViewArea(),
+                sectionsBefore, engine.debugStoredSectionCount(), queuedBefore, engine.debugQueuedChunkCount());
+    }
+
+    /**
+     * Called once per client tick (ClientTickEvent END) from ClientEventListener. Keeps the cells
+     * of every level that is NOT the current one synced into that level's engine. This is the one
+     * place that must visit all levels, hence a client tick rather than a level tick: only the
+     * current level receives LevelTickEvent.
+     */
     public static void clientTick(Minecraft minecraft) {
         if (STATES.isEmpty()) return;
         boolean validate = ++tickCounter % VALIDATE_INTERVAL_TICKS == 0;
         for (Map.Entry<Level, LevelState> entry : STATES.entrySet()) {
             Level level = entry.getKey();
+            // The current level is covered by its view area; its handover runs from the level tick.
+            if (level == minecraft.level) continue;
             LevelState state = entry.getValue();
             ColoredLightEngine engine = ((LevelAttachments) level).colorfullighting$getEngine();
             if (engine == null) continue;
-
-            if (level == minecraft.level) {
-                if (state.synced) {
-                    engine.syncExtraRegions(ColoredLightEngine.REGION_NAMESPACE_REMOTE_LEVEL, NO_REGIONS);
-                    state.synced = false;
-                }
-                continue;
-            }
 
             if (validate) validateAgainstChunkSource(level, state);
             rebuildDirtyCells(state);
             // Synced every tick even when unchanged: an engine reset (/cl on, /cl purge) drops all
             // extra regions and relies on their owners re-syncing them.
             engine.syncExtraRegions(ColoredLightEngine.REGION_NAMESPACE_REMOTE_LEVEL, state.regions);
-            state.synced = true;
+            state.cellsHeldByEngine = true;
         }
     }
 

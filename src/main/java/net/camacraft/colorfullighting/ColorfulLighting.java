@@ -14,6 +14,7 @@ import net.camacraft.colorfullighting.compat.oculus.ShaderpackAutoPatcher;
 import net.camacraft.colorfullighting.resourcemanager.InternalPackRegistration;
 import net.camacraft.colorfullighting.resourcemanager.ModResourceManagers;
 import net.camacraft.colorfullighting.compat.distanthorizons.DhCompat;
+import net.camacraft.colorfullighting.compat.truedarkness.TrueDarknessCompat;
 import net.camacraft.colorfullighting.compat.valkyrienskies.VsCompat;
 import net.minecraft.client.Minecraft;
 import net.minecraftforge.api.distmarker.Dist;
@@ -92,6 +93,11 @@ public class ColorfulLighting
             // The remote-level light regions themselves are always on (they are inert without a
             // second client level); this is just detection logging.
             LOGGER.info("Immersive Portals detected! Colored light will follow dimensions seen through portals.");
+        }
+        if (ModList.get().isLoaded("darkness")) {
+            // The LightTexture mixin does the work; this just confirms the hook resolved.
+            LOGGER.info("True Darkness detected! Its lightmap darkening will follow the dimension being rendered (Immersive Portals views){}",
+                    TrueDarknessCompat.isAvailable() ? "." : " - but its Darkness class could not be hooked, see the warning above.");
         }
         if (ModList.get().isLoaded("nvidium") || ModList.get().isLoaded("acedium")) {
             LOGGER.info("Nvidium/Acedium detected! Terrain light will be converted in their vertex encoder.");
