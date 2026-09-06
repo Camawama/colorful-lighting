@@ -71,7 +71,7 @@ public class ClientEventListener {
 	    // Keep a light region alive for every loaded Valkyrien Skies ship (no-op without VS).
 	    VsCompat compat = attachments.colorfullighting$getVSCompat();
 		if (compat != null) compat.clientTick(event.level);
-		
+	    
 	    // Re-reads tracked block entities' NBT and relights the ones whose resolved light changed.
 	    attachments.colorfullighting$getNbtCache().clientTick();
     }
@@ -112,12 +112,6 @@ public class ClientEventListener {
 
         // Tracks night vibrancy for the tint baked into Nvidium/Acedium meshes (no-op without them)
         NvidiumCompat.clientTick();
-
-        // Mirrors loaded chunks of non-current levels (Immersive Portals remote dimensions) into
-        // their engines as light regions; no-op when only the player's own level exists. Runs from
-        // the client tick because it must visit every level, and only the current level gets
-        // LevelTickEvent; the current level itself is handled in the LevelTickEvent handler above.
-        ImmersivePortalsCompat.clientTick(Minecraft.getInstance());
 
         if (ColorfulLighting.clientAccessor == null) return;
         var player = ColorfulLighting.clientAccessor.getPlayer();
@@ -165,9 +159,6 @@ public class ClientEventListener {
             DhCompat.onLevelUnload(level);
         }
 	    ((LevelAttachments) event.getLevel()).colorfullighting$getNbtCache().clear();
-        if (event.getLevel() instanceof net.minecraft.world.level.Level unloadedLevel) {
-            ImmersivePortalsCompat.onLevelUnload(unloadedLevel);
-        }
         BeaconEffectSync.clear();
 		// I think this is redundant
         ((LevelAttachments) event.getLevel()).colorfullighting$getEngine().reset();

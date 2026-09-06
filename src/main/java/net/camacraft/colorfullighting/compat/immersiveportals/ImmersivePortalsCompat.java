@@ -8,8 +8,10 @@ import net.camacraft.colorfullighting.ColorfulLighting;
 import net.camacraft.colorfullighting.common.ColoredLightEngine;
 import net.camacraft.colorfullighting.common.ViewArea;
 import net.camacraft.colorfullighting.common.accessors.mixin.LevelAttachments;
+import net.camacraft.colorfullighting.compat.CompatRegistry;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 
@@ -17,7 +19,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.WeakHashMap;
 
 /**
  * Keeps colored light alive in client levels the player is not currently in.
@@ -59,18 +60,13 @@ public final class ImmersivePortalsCompat {
      */
     private static final int VALIDATE_INTERVAL_TICKS = 100;
 
-    /**
-     * Weak keys: a level that unloads without its LevelEvent.Unload firing must not be pinned
-     * forever. Entries are normally removed explicitly in {@link #onLevelUnload}.
-     */
-    private static final Map<Level, LevelState> STATES = new WeakHashMap<>();
+	public static final CompatRegistry.CompatKey<Level, LevelState> COMPAT_KEY = new CompatRegistry.CompatKey<>(ResourceLocation.parse("colorful_lighting:immersive_portals"), (lvl) -> new LevelState());
     /**
      * Passed to {@link ColoredLightEngine#syncExtraRegions(long, Map)} to withdraw every cell of a
      * level: the engine reconciles the remote-level namespace against this empty map and removes
      * the regions it still holds. Only columns nothing else tracks lose their sections.
      */
     private static final Map<Long, ColoredLightEngine.LightRegion> NO_REGIONS = Map.of();
-    private static int tickCounter;
 
     private ImmersivePortalsCompat() {}
 
@@ -80,7 +76,8 @@ public final class ImmersivePortalsCompat {
         /** Regions mirroring cellChunks; values are immutable snapshots handed to the engine. */
         final Map<Long, ColoredLightEngine.LightRegion> regions = new HashMap<>();
         final LongOpenHashSet dirtyCells = new LongOpenHashSet();
-        /** Whether the engine currently holds this level's cells (i.e. the level was remote). */
+	    public int tickCounter;
+	    /** Whether the engine currently holds this level's cells (i.e. the level was remote). */
         boolean cellsHeldByEngine;
         // Diagnostics for the dimension-change transient: activity in the seconds after a handover.
         int chunkLoads, chunkUnloads;
@@ -89,7 +86,7 @@ public final class ImmersivePortalsCompat {
     }
 
     public static void onChunkLoad(ClientLevel level, ChunkPos pos) {
-        LevelState state = STATES.computeIfAbsent(level, l -> new LevelState());
+	    LevelState state = ((CompatRegistry<Level>) level).colorfullighting$getCompatInstance(COMPAT_KEY);
         state.chunkLoads++;
         long cell = cellKey(pos.x >> CELL_SHIFT, pos.z >> CELL_SHIFT);
         if (state.cellChunks.computeIfAbsent(cell, c -> new HashSet<>()).add(pos)) {
@@ -98,7 +95,7 @@ public final class ImmersivePortalsCompat {
     }
 
     public static void onChunkUnload(ClientLevel level, ChunkPos pos) {
-        LevelState state = STATES.get(level);
+	    LevelState state = ((CompatRegistry<Level>) level).colorfullighting$getCompatInstance(COMPAT_KEY);
         if (state == null) return;
         state.chunkUnloads++;
         long cell = cellKey(pos.x >> CELL_SHIFT, pos.z >> CELL_SHIFT);
@@ -109,10 +106,6 @@ public final class ImmersivePortalsCompat {
         }
     }
 
-    public static void onLevelUnload(Level level) {
-        STATES.remove(level);
-    }
-
     /**
      * Called from the LevelTickEvent handler for the current level, after its engine's view area
      * has been updated for this tick. Hands coverage over from the cells (held while the level was
@@ -120,7 +113,7 @@ public final class ImmersivePortalsCompat {
      * tick.
      */
     public static void onCurrentLevelTick(Level level) {
-        LevelState state = STATES.get(level);
+	    LevelState state = ((CompatRegistry<Level>) level).colorfullighting$getCompatInstance(COMPAT_KEY);
         if (state == null) return;
         ColoredLightEngine engine = ((LevelAttachments) level).colorfullighting$getEngine();
         if (engine == null) return;
@@ -147,32 +140,21 @@ public final class ImmersivePortalsCompat {
                 "[CL portal] {} is now the current level: withdrew {} cells, view area {}, sections {} -> {}, queued chunks {} -> {}",
                 level.dimension().location(), state.regions.size(), engine.debugViewArea(),
                 sectionsBefore, engine.debugStoredSectionCount(), queuedBefore, engine.debugQueuedChunkCount());
-    }
+	    
+	    // Mirrors loaded chunks of non-current levels (Immersive Portals remote dimensions) into
+	    // their engines as light regions; no-op when only the player's own level exists
+		
+	    // The current level is covered by its view area; its handover runs from the level tick.
+	    if (level == Minecraft.getInstance().level) return;
+	    
+	    boolean validate = ++state.tickCounter % VALIDATE_INTERVAL_TICKS == 0;
 
-    /**
-     * Called once per client tick (ClientTickEvent END) from ClientEventListener. Keeps the cells
-     * of every level that is NOT the current one synced into that level's engine. This is the one
-     * place that must visit all levels, hence a client tick rather than a level tick: only the
-     * current level receives LevelTickEvent.
-     */
-    public static void clientTick(Minecraft minecraft) {
-        if (STATES.isEmpty()) return;
-        boolean validate = ++tickCounter % VALIDATE_INTERVAL_TICKS == 0;
-        for (Map.Entry<Level, LevelState> entry : STATES.entrySet()) {
-            Level level = entry.getKey();
-            // The current level is covered by its view area; its handover runs from the level tick.
-            if (level == minecraft.level) continue;
-            LevelState state = entry.getValue();
-            ColoredLightEngine engine = ((LevelAttachments) level).colorfullighting$getEngine();
-            if (engine == null) continue;
-
-            if (validate) validateAgainstChunkSource(level, state);
-            rebuildDirtyCells(state);
-            // Synced every tick even when unchanged: an engine reset (/cl on, /cl purge) drops all
-            // extra regions and relies on their owners re-syncing them.
-            engine.syncExtraRegions(ColoredLightEngine.REGION_NAMESPACE_REMOTE_LEVEL, state.regions);
-            state.cellsHeldByEngine = true;
-        }
+        if (validate) validateAgainstChunkSource(level, state);
+        rebuildDirtyCells(state);
+        // Synced every tick even when unchanged: an engine reset (/cl on, /cl purge) drops all
+        // extra regions and relies on their owners re-syncing them.
+        engine.syncExtraRegions(ColoredLightEngine.REGION_NAMESPACE_REMOTE_LEVEL, state.regions);
+        state.cellsHeldByEngine = true;
     }
 
     private static void validateAgainstChunkSource(Level level, LevelState state) {

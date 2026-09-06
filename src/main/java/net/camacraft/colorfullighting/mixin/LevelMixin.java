@@ -8,6 +8,7 @@ import net.camacraft.colorfullighting.common.ColoredLightEngine;
 import net.camacraft.colorfullighting.common.accessors.LevelAccessor;
 import net.camacraft.colorfullighting.common.accessors.mixin.ClientLevelAccessor;
 import net.camacraft.colorfullighting.common.accessors.mixin.LevelAttachments;
+import net.camacraft.colorfullighting.compat.CompatRegistry;
 import net.camacraft.colorfullighting.compat.flywheel.FlywheelCompat;
 import net.camacraft.colorfullighting.compat.dynamiclights.DynamicLightsCompat;
 import net.camacraft.colorfullighting.compat.valkyrienskies.VsCompat;
@@ -24,10 +25,12 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.function.Supplier;
 
 @Mixin(Level.class)
-public class LevelMixin implements LevelAttachments {
+public class LevelMixin implements LevelAttachments, CompatRegistry {
 	@Unique
 	LevelAccessor colorfullighting$accessor;
 	@Unique
@@ -113,6 +116,18 @@ public class LevelMixin implements LevelAttachments {
 	@Override
 	public void colorfullighting$setDhColorCache(DhColorCache cache) {
 		colorfullighting$dhColorCache = cache;
+	}
+	
+	Map<CompatKey<?, ?>, Object> compats = new HashMap<>();
+	
+	@Override
+	public Object colorfullighting$getCompatInstance(CompatKey key) {
+		Object o = compats.get(key);
+		if (o == null) {
+			o = key.generator().apply(this);
+			compats.put(key, o);
+		}
+		return o;
 	}
 	
 	@Inject(at = @At("HEAD"), method = "close")
