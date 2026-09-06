@@ -129,14 +129,15 @@ as dynamic light sources.
 - `CLClientLevel`: implement when your level is rendered by something other than the vanilla
   `LevelRenderer`; you receive section-dirty callbacks so your renderer can re-mesh.
 - `CLWrapperAttachments`: for wrapper levels that delegate to a real level; forwards all
-  per-level state to the wrapped level so no second engine is created. Note: this interface
-  intentionally exposes internal types and is only semi-stable; see its javadoc.
+  per-level state to the wrapped level so that, for example, render code can read the correct data
+  instead of crashing the game.
 
 ## Stability
 
 - Stable: the packed format, `CLPackedLight`, `ColorfulLightingApi`, `CLLightView`, both
   provider interfaces, `CLSupportingLevel`, `CLClientLevel`. Additive growth only;
   `API_VERSION` bumps on anything incompatible.
-- Semi-stable: `CLWrapperAttachments` (mirrors internal per-level state by necessity; new
-  methods arrive with delegating defaults).
+- Stable: `CLWrapperAttachments` may change, but you don't have to do anything with the code of
+  this, so it doesn't matter. All methods that may be added or removed come with delegate defaults,
+  an implementation will never be necessary.
 - Everything outside `net.camacraft.colorfullighting.api` is internal and changes without notice.

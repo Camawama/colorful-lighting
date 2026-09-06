@@ -8,21 +8,17 @@ import net.camacraft.colorfullighting.compat.distanthorizons.DhColorCache;
 import net.camacraft.colorfullighting.compat.dynamiclights.DynamicLightsCompat;
 import net.camacraft.colorfullighting.compat.flywheel.FlywheelCompat;
 import net.camacraft.colorfullighting.compat.valkyrienskies.VsCompat;
+import net.minecraft.client.renderer.chunk.RenderChunkRegion;
 import net.minecraft.world.level.Level;
 
 /**
- * Advanced integration for <b>wrapper levels</b>: level implementations that delegate to a real
- * level (portal mirrors, ship-world views, ...). Implementing this forwards all of Colorful
- * Lighting's per-level state to the wrapped level, so light sampled through the wrapper matches
- * the wrapped level exactly and no second engine is created. Implement
- * {@link #colorfullighting$getWrappedLevel()} and the defaults handle the rest.
+ * Simple method of creating a wrapper level, which refers to a wrapped level's lighting engine and information.
+ * This is provided as a stable method of creating wrappers; if you use this, you will not have to maintain you wrapper implementation between versions of CL.
  *
- * <p><b>Stability note:</b> unlike the rest of the {@code api} package, this interface extends
- * the internal {@link LevelAttachments} and re-exports internal types, because a wrapper must
- * mirror whatever per-level state the mod currently keeps. New methods may appear here between
- * versions (with delegating defaults, so implementors keep compiling). Only
- * {@code colorfullighting$getWrappedLevel()} is a stable contract. If you do not wrap an
- * existing level, use {@link CLSupportingLevel} instead.
+ * Some examples of where this would be useful are {@link RenderChunkRegion}, {@link me.jellysquid.mods.sodium.client.world.WorldSlice}, and {@link net.camacraft.colorfullighting.accessors.LevelWrapper}
+ * Colorful lighting opts to implement these manually, but doing so is not recommended for mods implementing CL support on their end.
+ *
+ * Additionally, when utilizing any of these methods, you should be using {@link LevelAttachments}, you should not cast to a LevelWrapper, as doing so provides no real benefit, and makes your code more prone to errors.
  */
 public interface CLWrapperAttachments extends LevelAttachments {
 	Level colorfullighting$getWrappedLevel();
