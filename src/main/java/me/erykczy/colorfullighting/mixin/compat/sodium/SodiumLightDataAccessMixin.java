@@ -48,6 +48,8 @@ public abstract class SodiumLightDataAccessMixin {
 
         BlockState state = world.getBlockState(pos);
 
+        if (state == null) return 0;
+
         boolean em = state.emissiveRendering(world, pos);
         boolean op = state.isViewBlocking(world, pos) && state.getLightBlock(world, pos) != 0;
         boolean fo = state.isSolidRender(world, pos);

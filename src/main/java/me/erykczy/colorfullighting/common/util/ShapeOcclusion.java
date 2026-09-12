@@ -19,6 +19,10 @@ public final class ShapeOcclusion {
     private ShapeOcclusion() {}
 
     public static boolean isDynamicShapeBlocker(BlockState state) {
+        if (state == null) {
+            return false;
+        }
+
         Block block = state.getBlock();
         return block instanceof DoorBlock || block instanceof TrapDoorBlock;
     }

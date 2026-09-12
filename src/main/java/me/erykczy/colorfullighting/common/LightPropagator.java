@@ -773,16 +773,16 @@ public class LightPropagator implements Runnable {
 
     private boolean propagateIncrease(ColoredLightEngine engine, Queue<ColoredLightEngine.LightUpdateRequest> increaseRequests, LightUpdateRequest request, LevelAccessor level) {
         if (request.checkSource) {
-             BlockStateAccessor blockState = level.getBlockState(request.blockPos);
-             if (blockState == null || Config.getEmissionBrightness(level, request.blockPos, blockState) == 0) {
-                 return false;
-             }
+            BlockStateAccessor blockState = level.getBlockState(request.blockPos);
+            if (blockState == null || blockState.getBlockState() == null || Config.getEmissionBrightness(level, request.blockPos, blockState) == 0) {
+                return false;
+            }
         }
 
         if (request.repropagate) {
-             if (request.lightColor == null) {
+            if (request.lightColor == null) {
                 request.lightColor = getLatestLightColor(engine, request.blockPos);
-             }
+            }
         }
 
         ColorRGB4 oldLightColor = getLatestLightColor(engine, request.blockPos);
@@ -799,8 +799,9 @@ public class LightPropagator implements Runnable {
 
         // Cache source block state and geometry info once, not per-direction
         BlockStateAccessor sourceState = level.getBlockState(request.blockPos);
-        boolean sourceStateExists = sourceState != null;
-        BlockState sourceBlockState = sourceStateExists ? sourceState.getBlockState() : null;
+        BlockState sourceBlockState = sourceState != null ? sourceState.getBlockState() : null;
+        // Async chunk mods can return a wrapper whose inner BlockState is still null.
+        boolean sourceStateExists = sourceBlockState != null;
         boolean sourceOccludes = sourceStateExists && sourceBlockState.useShapeForLightOcclusion();
         boolean sourceDynamic = sourceStateExists && ShapeOcclusion.isDynamicShapeBlocker(sourceBlockState);
         ColorRGB4 sourceBaseTransmittance = sourceStateExists ? Config.getColoredLightTransmittance(level, request.blockPos, sourceState) : ColorRGB4.WHITE;
@@ -819,7 +820,8 @@ public class LightPropagator implements Runnable {
             int lightBlocked = Math.max(1, neighbourState.getLightBlock(level, neighbourPos));
 
             BlockState neighborBlockState = neighbourState.getBlockState();
-            boolean neighbourDynamic = ShapeOcclusion.isDynamicShapeBlocker(neighborBlockState);
+            boolean neighborExists = neighborBlockState != null;
+            boolean neighbourDynamic = neighborExists && ShapeOcclusion.isDynamicShapeBlocker(neighborBlockState);
 
             // Override with custom absorption if it's defined.
             // Doors/trapdoors are handled by the panel logic below instead: their filter must
@@ -828,8 +830,8 @@ public class LightPropagator implements Runnable {
 
             boolean geometryOccludes = false;
             if (sourceStateExists) {
-                boolean neighborOccludes = neighborBlockState.useShapeForLightOcclusion();
-                
+                boolean neighborOccludes = neighborExists && neighborBlockState.useShapeForLightOcclusion();
+
                 if (sourceOccludes || neighborOccludes) {
                     VoxelShape sourceFaceShape = sourceOccludes ? sourceBlockState.getFaceOcclusionShape(level.getLevel(), request.blockPos, direction) : Shapes.empty();
                     VoxelShape neighbourFaceShape = neighborOccludes ? neighborBlockState.getFaceOcclusionShape(level.getLevel(), neighbourPos, direction.getOpposite()) : Shapes.empty();
@@ -903,16 +905,16 @@ public class LightPropagator implements Runnable {
 
     private boolean propagateDarknessIncrease(ColoredLightEngine engine, Queue<LightUpdateRequest> increaseRequests, LightUpdateRequest request, LevelAccessor level) {
         if (request.checkSource) {
-             BlockStateAccessor blockState = level.getBlockState(request.blockPos);
-             if (blockState == null || Config.getAbsorption(level, request.blockPos, blockState) == 0) {
-                 return false;
-             }
+            BlockStateAccessor blockState = level.getBlockState(request.blockPos);
+            if (blockState == null || blockState.getBlockState() == null || Config.getAbsorption(level, request.blockPos, blockState) == 0) {
+                return false;
+            }
         }
 
         if (request.repropagate) {
-             if (request.lightColor == null) {
+            if (request.lightColor == null) {
                 request.lightColor = getLatestDarknessColor(engine, request.blockPos);
-             }
+            }
         }
 
         ColorRGB4 oldDarknessColor = getLatestDarknessColor(engine, request.blockPos);
@@ -929,8 +931,8 @@ public class LightPropagator implements Runnable {
 
         // Cache source block state and geometry info once, not per-direction
         BlockStateAccessor sourceState = level.getBlockState(request.blockPos);
-        boolean sourceStateExists = sourceState != null;
-        BlockState sourceBlockState = sourceStateExists ? sourceState.getBlockState() : null;
+        BlockState sourceBlockState = sourceState != null ? sourceState.getBlockState() : null;
+        boolean sourceStateExists = sourceBlockState != null;
         boolean sourceOccludes = sourceStateExists && sourceBlockState.useShapeForLightOcclusion();
         boolean sourceDynamic = sourceStateExists && ShapeOcclusion.isDynamicShapeBlocker(sourceBlockState);
 
@@ -943,10 +945,11 @@ public class LightPropagator implements Runnable {
             int lightBlocked = Math.max(1, neighbourState.getLightBlock(level, neighbourPos));
 
             BlockState neighborBlockState = neighbourState.getBlockState();
-            boolean neighbourDynamic = ShapeOcclusion.isDynamicShapeBlocker(neighborBlockState);
+            boolean neighborExists = neighborBlockState != null;
+            boolean neighbourDynamic = neighborExists && ShapeOcclusion.isDynamicShapeBlocker(neighborBlockState);
 
             if (sourceStateExists) {
-                boolean neighborOccludes = neighborBlockState.useShapeForLightOcclusion();
+                boolean neighborOccludes = neighborExists && neighborBlockState.useShapeForLightOcclusion();
 
                 if (sourceOccludes || neighborOccludes) {
                     VoxelShape sourceFaceShape = sourceOccludes ? sourceBlockState.getFaceOcclusionShape(level.getLevel(), request.blockPos, direction) : Shapes.empty();

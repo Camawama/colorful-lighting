@@ -35,7 +35,7 @@ public class LevelRendererMixin implements LevelRendererAccessor {
 	
 	@Inject(method = "getLightColor(Lnet/minecraft/world/level/BlockAndTintGetter;Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/core/BlockPos;)I", at = @At("HEAD"), cancellable = true)
     private static void colorfullighting$getLightColor(BlockAndTintGetter level, BlockState state, BlockPos pos, CallbackInfoReturnable<Integer> cir) {
-        if (!ColoredLightEngine.isEnabled()) {
+        if (!ColoredLightEngine.isEnabled() || state == null) {
             return;
         }
 
