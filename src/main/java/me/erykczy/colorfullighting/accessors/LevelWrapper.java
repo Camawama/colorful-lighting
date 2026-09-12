@@ -92,9 +92,14 @@ public class LevelWrapper implements LevelAccessor, LevelAttachments {
     public void findLightSources(ChunkPos chunkPos, Consumer<BlockPos> consumer) {
         ChunkAccess chunk = level.getChunk(chunkPos.x, chunkPos.z);
         chunk.findBlocks(
-                (blockState, blockPos) -> // individual block filter
-                        blockState.getLightEmission(chunk, blockPos) != 0 ||
-                        Config.getEmissionBrightness(this, blockPos, new BlockStateWrapper(blockState)) != 0,
+                (blockState, blockPos) -> {
+                    // Async chunk mods may yield null states during concurrent loads.
+                    if (blockState == null) {
+                        return false;
+                    }
+                    return blockState.getLightEmission(chunk, blockPos) != 0 ||
+                            Config.getEmissionBrightness(this, blockPos, new BlockStateWrapper(blockState)) != 0;
+                },
                 (blockPos, blockState) -> // for each found light source
                         consumer.accept(new BlockPos(blockPos))
         );
@@ -104,8 +109,12 @@ public class LevelWrapper implements LevelAccessor, LevelAttachments {
     public void findDarknessSources(ChunkPos chunkPos, Consumer<BlockPos> consumer) {
         ChunkAccess chunk = level.getChunk(chunkPos.x, chunkPos.z);
         chunk.findBlocks(
-                (blockState, blockPos) -> // individual block filter
-                        Config.getAbsorption(this, blockPos, new BlockStateWrapper(blockState)) > 0,
+                (blockState, blockPos) -> {
+                    if (blockState == null) {
+                        return false;
+                    }
+                    return Config.getAbsorption(this, blockPos, new BlockStateWrapper(blockState)) > 0;
+                },
                 (blockPos, blockState) -> // for each found light source
                         consumer.accept(new BlockPos(blockPos))
         );

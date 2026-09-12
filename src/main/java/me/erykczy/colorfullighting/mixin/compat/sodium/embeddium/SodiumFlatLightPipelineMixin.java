@@ -66,10 +66,12 @@ public abstract class SodiumFlatLightPipelineMixin {
              BlockState state = level.getBlockState(pos);
              
             // 3. Only override the light if the block ACTUALLY emits configured light
-            var emission = Config.getLightColor(state);
-            if (!emission.equals(Config.defaultColor)) {
-                return SodiumPackedLightData.packData(skyLight, ColorRGB8.fromRGB4(emission));
-             }
+            if (state != null) {
+                var emission = Config.getLightColor(state);
+                if (!emission.equals(Config.defaultColor)) {
+                    return SodiumPackedLightData.packData(skyLight, ColorRGB8.fromRGB4(emission));
+                }
+            }
         }
 
         // 4. Fallback to normal lighting behavior with the properly sampled ambient light color
